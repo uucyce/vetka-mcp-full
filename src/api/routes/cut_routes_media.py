@@ -1,0 +1,1997 @@
+"""
+MARKER_B41 — Media & Color sub-router.
+Extracted from cut_routes.py to reduce merge conflicts and improve modularity.
+
+Routes: scopes, probes, color pipeline, LUT management, preview decoder,
+waveform peaks, codec detection, thumbnail, audio clip-segment.
+
+@status: active
+@phase: B41
+@task: tb_1774243018_2
+"""
+from __future__ import annotations
+
+import base64
+import hashlib
+import json
+import logging
+import os
+import subprocess
+import tempfile
+from pathlib import Path
+from typing import Any
+
+logger = logging.getLogger(__name__)
+
+import numpy as np
+from fastapi import APIRouter, HTTPException
+from fastapi.responses import Response
+from pydantic import BaseModel
+
+from src.services.cut_codec_probe import probe_file
+from src.services.cut_project_store import CutProjectStore
+
+media_router = APIRouter(tags=["CUT-Media"])
+
+
+# ---------------------------------------------------------------------------
+# Request Models
+# ---------------------------------------------------------------------------
+
+
+class CutColorApplyRequest(BaseModel):
+    source_path: str
+    time: float = 0.0
+    log_profile: str | None = None
+    lut_path: str | None = None
+    max_width: int = 540
+
+
+class CutZebraRequest(BaseModel):
+    source_path: str
+    time: float = 0.0
+    log_profile: str | None = None
+    lut_path: str | None = None
+    max_width: int = 512
+
+
+class CutBroadcastSafeRequest(BaseModel):
+    source_path: str
+    time: float = 0.0
+    mode: str = "normal"  # "conservative" (100 IRE), "normal" (110 IRE), "relaxed" (115 IRE)
+    log_profile: str | None = None
+    lut_path: str | None = None
+    max_width: int = 540
+
+
+class CutLutImportRequest(BaseModel):
+    sandbox_root: str
+    project_id: str
+    source_path: str
+
+
+class CutLutDeleteRequest(BaseModel):
+    sandbox_root: str
+    project_id: str
+    lut_filename: str
+
+
+class CutLutPreviewRequest(BaseModel):
+    source_path: str
+    lut_path: str
+    time: float = 0.0
+    proxy_height: int = 270
+
+
+class CutPreviewRequest(BaseModel):
+    source_path: str
+    time: float = 0.0
+    proxy_height: int = 540
+    log_profile: str | None = None
+    lut_path: str | None = None
+    jpeg_quality: int = 80
+    effects: list[dict[str, Any]] | None = None
+
+
+# ---------------------------------------------------------------------------
+# Routes: Scopes
+# ---------------------------------------------------------------------------
+
+
+@media_router.get("/scopes/analyze")
+async def cut_scopes_analyze(
+    source_path: str,
+    time: float = 0.0,
+    scopes: str = "histogram,waveform,vectorscope",
+    size: int = 256,
+    log_profile: str | None = None,
+    lut_path: str | None = None,
+) -> dict[str, Any]:
+    """
+    MARKER_B19 — Video scope analysis: waveform, parade, vectorscope, histogram.
+    MARKER_B25 — With optional color pipeline grading.
+    """
+    from src.services.cut_scope_renderer import analyze_frame_scopes
+
+    size = max(64, min(512, size))
+    scope_list = [s.strip() for s in scopes.split(",") if s.strip()]
+    valid = {"histogram", "waveform", "vectorscope", "parade", "broadcast_safe"}
+    scope_list = [s for s in scope_list if s in valid] or ["histogram", "waveform", "vectorscope"]
+
+    return analyze_frame_scopes(
+        source_path=source_path, time_sec=time, scopes=scope_list, scope_size=size,
+        log_profile=log_profile, lut_path=lut_path,
+    )
+
+
+# MARKER_B26: Zebra data endpoint
+@media_router.post("/scopes/zebra")
+async def cut_scopes_zebra(body: CutZebraRequest) -> dict[str, Any]:
+    """
+    MARKER_B26 — Zebra detection: over-white, under-black, chroma-illegal.
+
+    Returns percentages + base64 PNG zebra mask with alpha channel.
+    Mask values: 0=safe (transparent), 1=over-white (light stripe), 2=under-black (dark stripe), 3=chroma-illegal.
+
+    Input: { source_path, time, log_profile?, lut_path?, max_width? }
+    Output: { over_white_pct, under_black_pct, chroma_illegal_pct, total_illegal_pct, zebra_mask_b64 }
+    """
+    import io as _io
+    from src.services.cut_scope_renderer import extract_frame_rgb, detect_out_of_range
+
+    try:
+        import numpy as np_local
+        HAS_NP = True
+    except ImportError:
+        HAS_NP = False
+
+    frame = extract_frame_rgb(body.source_path, body.time, max_width=body.max_width)
+    if frame is None:
+        return {"success": False, "error": "frame_extraction_failed"}
+
+    if body.log_profile or body.lut_path:
+        try:
+            from src.services.cut_color_pipeline import apply_color_pipeline
+            frame = apply_color_pipeline(frame, log_profile=body.log_profile, lut_path=body.lut_path)
+        except ImportError:
+            pass
+
+    result = detect_out_of_range(frame)
+
+    # Build PNG zebra mask with alpha channel for frontend overlay
+    # mask values: 1=over-white, 2=under-black, 3=chroma-illegal, 0=safe
+    zebra_mask_b64 = ""
+    if HAS_NP:
+        try:
+            mask_data = result.get("zebra_mask", [])
+            if mask_data:
+                mask_arr = np_local.array(mask_data, dtype=np_local.uint8)
+                h_m, w_m = mask_arr.shape
+                # Build RGBA image: R=over-white indicator, A=opacity mask
+                rgba = np_local.zeros((h_m, w_m, 4), dtype=np_local.uint8)
+                # over-white: light grey stripe pattern (value=1)
+                ow = mask_arr == 1
+                # under-black: dark grey stripe pattern (value=2)
+                ub = mask_arr == 2
+                # chroma illegal: mid-grey (value=3)
+                ci = mask_arr == 3
+
+                # Encode class in R channel: 200=over, 100=under, 150=chroma
+                rgba[ow, 0] = 200  # R: over-white marker
+                rgba[ub, 0] = 100  # R: under-black marker
+                rgba[ci, 0] = 150  # R: chroma-illegal marker
+                # G channel: encode type (1/2/3)
+                rgba[ow, 1] = 1
+                rgba[ub, 1] = 2
+                rgba[ci, 1] = 3
+                # Alpha: 255 for all out-of-range pixels, 0 for safe
+                out_of_range = (mask_arr > 0)
+                rgba[out_of_range, 3] = 255
+
+                # Encode as PNG via ffmpeg (raw rgba → png)
+                raw_bytes = rgba.tobytes()
+                cmd = [
+                    "ffmpeg", "-v", "error",
+                    "-f", "rawvideo", "-pix_fmt", "rgba",
+                    "-s", f"{w_m}x{h_m}", "-i", "pipe:0",
+                    "-f", "image2", "-vcodec", "png", "pipe:1",
+                ]
+                import subprocess as _sp
+                proc = _sp.run(cmd, input=raw_bytes, capture_output=True, timeout=5)
+                if proc.returncode == 0 and proc.stdout:
+                    zebra_mask_b64 = base64.b64encode(proc.stdout).decode("ascii")
+        except Exception as e:
+            logger.warning("Zebra mask PNG encode failed: %s", e)
+
+    return {
+        "success": True,
+        "over_white_pct": result["over_white_pct"],
+        "under_black_pct": result["under_black_pct"],
+        "chroma_illegal_pct": result["chroma_illegal_pct"],
+        "total_illegal_pct": result["total_illegal_pct"],
+        "zebra_mask_b64": zebra_mask_b64,
+        "frame_w": frame.shape[1],
+        "frame_h": frame.shape[0],
+    }
+
+
+# MARKER_B26: Broadcast safe filter endpoint
+@media_router.post("/color/broadcast-safe")
+async def cut_color_broadcast_safe(body: CutBroadcastSafeRequest) -> dict[str, Any]:
+    """
+    MARKER_B26 — Apply broadcast-safe clamping to a preview frame.
+
+    Modes:
+      - "conservative": strict Rec.709 studio swing (Y: 16-235, Cb/Cr: 16-240)
+      - "normal": Y 16-240 (110 IRE headroom for EBU R68)
+      - "relaxed": Y 16-244 (115 IRE, common for digital delivery)
+
+    Returns base64 JPEG of the clamped frame.
+    """
+    from src.services.cut_scope_renderer import extract_frame_rgb, broadcast_safe_clamp
+    import numpy as np_local
+
+    frame = extract_frame_rgb(body.source_path, body.time, max_width=body.max_width)
+    if frame is None:
+        return {"success": False, "error": "frame_extraction_failed"}
+
+    if body.log_profile or body.lut_path:
+        try:
+            from src.services.cut_color_pipeline import apply_color_pipeline
+            frame = apply_color_pipeline(frame, log_profile=body.log_profile, lut_path=body.lut_path)
+        except ImportError:
+            pass
+
+    # Mode-specific luma ceiling override
+    mode = body.mode.lower()
+    if mode == "normal":
+        # Temporarily expand luma max to 240 (~110 IRE)
+        frame_clamped = _broadcast_safe_clamp_mode(frame, luma_max=240)
+    elif mode == "relaxed":
+        # Expand luma max to 244 (~115 IRE)
+        frame_clamped = _broadcast_safe_clamp_mode(frame, luma_max=244)
+    else:
+        # conservative (default): strict 16-235
+        frame_clamped = broadcast_safe_clamp(frame)
+
+    h, w, _ = frame_clamped.shape
+    try:
+        import subprocess as _sp
+        cmd = [
+            "ffmpeg", "-v", "error",
+            "-f", "rawvideo", "-pix_fmt", "rgb24",
+            "-s", f"{w}x{h}", "-i", "pipe:0",
+            "-vframes", "1", "-f", "image2", "-vcodec", "mjpeg", "-q:v", "4", "pipe:1",
+        ]
+        proc = _sp.run(cmd, input=frame_clamped.tobytes(), capture_output=True, timeout=5)
+        if proc.returncode != 0:
+            return {"success": False, "error": "jpeg_encode_failed"}
+        jpeg_b64 = base64.b64encode(proc.stdout).decode("ascii")
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+    return {
+        "success": True, "width": w, "height": h, "format": "jpeg",
+        "data": jpeg_b64, "mode": mode,
+    }
+
+
+def _broadcast_safe_clamp_mode(frame_rgb: "np.ndarray", luma_max: int = 235) -> "np.ndarray":
+    """Broadcast safe clamp with configurable luma ceiling. Internal helper for B26."""
+    try:
+        import numpy as _np
+    except ImportError:
+        return frame_rgb
+
+    r = frame_rgb[:, :, 0].astype(_np.float32)
+    g = frame_rgb[:, :, 1].astype(_np.float32)
+    b = frame_rgb[:, :, 2].astype(_np.float32)
+
+    y = 16 + 65.481 * r / 255 + 128.553 * g / 255 + 24.966 * b / 255
+    cb = 128 - 37.797 * r / 255 - 74.203 * g / 255 + 112.0 * b / 255
+    cr = 128 + 112.0 * r / 255 - 93.786 * g / 255 - 18.214 * b / 255
+
+    y = _np.clip(y, 16, luma_max)
+    cb = _np.clip(cb, 16, 240)
+    cr = _np.clip(cr, 16, 240)
+
+    r_out = 1.164 * (y - 16) + 1.596 * (cr - 128)
+    g_out = 1.164 * (y - 16) - 0.392 * (cb - 128) - 0.813 * (cr - 128)
+    b_out = 1.164 * (y - 16) + 2.017 * (cb - 128)
+
+    result = _np.stack([r_out, g_out, b_out], axis=-1)
+    return _np.clip(result, 0, 255).astype(_np.uint8)
+
+
+# ---------------------------------------------------------------------------
+# Routes: Color Pipeline & LUT
+# ---------------------------------------------------------------------------
+
+
+@media_router.post("/color/apply")
+async def cut_color_apply(body: CutColorApplyRequest) -> dict[str, Any]:
+    """MARKER_B18 — Apply color pipeline (log decode + LUT) to a single frame."""
+    from src.services.cut_scope_renderer import extract_frame_rgb
+    from src.services.cut_color_pipeline import apply_color_pipeline
+
+    frame = extract_frame_rgb(body.source_path, body.time, max_width=body.max_width)
+    if frame is None:
+        return {"success": False, "error": "frame_extraction_failed"}
+
+    graded = apply_color_pipeline(frame, log_profile=body.log_profile, lut_path=body.lut_path)
+    h, w, _ = graded.shape
+
+    try:
+        cmd = [
+            "ffmpeg", "-v", "error",
+            "-f", "rawvideo", "-pix_fmt", "rgb24",
+            "-s", f"{w}x{h}", "-i", "pipe:0",
+            "-vframes", "1", "-f", "image2", "-vcodec", "mjpeg", "-q:v", "4", "pipe:1",
+        ]
+        proc = subprocess.run(cmd, input=graded.tobytes(), capture_output=True, timeout=5)
+        if proc.returncode != 0:
+            return {"success": False, "error": "jpeg_encode_failed"}
+        jpeg_b64 = base64.b64encode(proc.stdout).decode("ascii")
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+    return {
+        "success": True, "width": w, "height": h, "format": "jpeg",
+        "data": jpeg_b64, "log_profile": body.log_profile, "lut_path": body.lut_path,
+    }
+
+
+@media_router.get("/probe/log-detect")
+async def cut_probe_log_detect(source_path: str) -> dict[str, Any]:
+    """MARKER_B24 — Auto-detect camera log profile from metadata."""
+    from src.services.cut_codec_probe import probe_and_detect_log
+    return probe_and_detect_log(source_path)
+
+
+@media_router.post("/color/lut/import")
+async def cut_lut_import(body: CutLutImportRequest) -> dict[str, Any]:
+    """MARKER_B23 — Import a .cube LUT file into project storage."""
+    from src.services.cut_color_pipeline import import_lut
+    store = CutProjectStore(body.sandbox_root)
+    project = store.load_project()
+    if project is None or str(project.get("project_id") or "") != str(body.project_id):
+        return {"success": False, "error": "project_not_found"}
+    return import_lut(body.sandbox_root, body.source_path)
+
+
+@media_router.get("/color/lut/list")
+async def cut_lut_list(sandbox_root: str, project_id: str) -> dict[str, Any]:
+    """MARKER_B23 — List LUT files in project storage."""
+    from src.services.cut_color_pipeline import list_project_luts
+    store = CutProjectStore(sandbox_root)
+    project = store.load_project()
+    if project is None or str(project.get("project_id") or "") != str(project_id):
+        return {"success": False, "error": "project_not_found"}
+    luts = list_project_luts(sandbox_root)
+    return {"success": True, "luts": luts, "count": len(luts)}
+
+
+@media_router.post("/color/lut/delete")
+async def cut_lut_delete(body: CutLutDeleteRequest) -> dict[str, Any]:
+    """MARKER_B23 — Delete a LUT from project storage."""
+    from src.services.cut_color_pipeline import get_lut_storage_dir
+    store = CutProjectStore(body.sandbox_root)
+    project = store.load_project()
+    if project is None or str(project.get("project_id") or "") != str(body.project_id):
+        return {"success": False, "error": "project_not_found"}
+    lut_dir = get_lut_storage_dir(body.sandbox_root)
+    safe_name = os.path.basename(body.lut_filename)
+    path = os.path.join(lut_dir, safe_name)
+    if os.path.exists(path):
+        os.remove(path)
+        return {"success": True, "deleted": safe_name}
+    return {"success": False, "error": "lut_not_found"}
+
+
+@media_router.post("/color/lut/preview")
+async def cut_lut_preview(body: CutLutPreviewRequest) -> dict[str, Any]:
+    """MARKER_B23 — Preview a LUT on current frame. Returns before/after base64 JPEGs."""
+    from src.services.cut_scope_renderer import extract_frame_rgb
+    from src.services.cut_color_pipeline import apply_color_pipeline
+
+    frame = extract_frame_rgb(body.source_path, body.time, max_width=body.proxy_height * 16 // 9)
+    if frame is None:
+        return {"success": False, "error": "frame_extraction_failed"}
+
+    graded = apply_color_pipeline(frame, lut_path=body.lut_path)
+    h, w, _ = graded.shape
+
+    def encode_jpeg(f: "np.ndarray") -> str | None:
+        try:
+            cmd = ["ffmpeg", "-v", "error", "-f", "rawvideo", "-pix_fmt", "rgb24",
+                   "-s", f"{w}x{h}", "-i", "pipe:0", "-vframes", "1",
+                   "-f", "image2", "-vcodec", "mjpeg", "-q:v", "6", "pipe:1"]
+            proc = subprocess.run(cmd, input=f.tobytes(), capture_output=True, timeout=5)
+            if proc.returncode == 0 and proc.stdout:
+                return base64.b64encode(proc.stdout).decode("ascii")
+        except Exception:
+            pass
+        return None
+
+    return {
+        "success": True, "width": w, "height": h,
+        "before": encode_jpeg(frame), "after": encode_jpeg(graded), "lut_path": body.lut_path,
+    }
+
+
+@media_router.get("/color/profiles")
+async def cut_color_profiles() -> dict[str, Any]:
+    """MARKER_B18 — List available camera log profiles."""
+    from src.services.cut_color_pipeline import list_log_profiles
+    return {"success": True, "profiles": list_log_profiles()}
+
+
+# ---------------------------------------------------------------------------
+# Routes: Preview Decoder
+# ---------------------------------------------------------------------------
+
+
+@media_router.post("/preview/frame")
+async def cut_preview_frame(body: CutPreviewRequest) -> dict[str, Any]:
+    """MARKER_B20 — Decode preview frame with full color pipeline."""
+    from src.services.cut_preview_decoder import decode_preview_frame, encode_preview_jpeg, apply_numpy_effects
+    import time as time_mod
+
+    t0 = time_mod.monotonic()
+    frame = decode_preview_frame(body.source_path, body.time, body.proxy_height, body.log_profile, body.lut_path)
+    if frame is None:
+        return {"success": False, "error": "decode_failed"}
+
+    if body.effects:
+        frame_f = frame.astype(np.float32) / 255.0
+        frame_f = apply_numpy_effects(frame_f, body.effects)
+        frame = (np.clip(frame_f, 0, 1) * 255).astype(np.uint8)
+
+    jpeg = encode_preview_jpeg(frame, body.jpeg_quality)
+    if jpeg is None:
+        return {"success": False, "error": "encode_failed"}
+
+    elapsed_ms = (time_mod.monotonic() - t0) * 1000
+    return {
+        "success": True, "width": frame.shape[1], "height": frame.shape[0],
+        "format": "jpeg", "data": base64.b64encode(jpeg).decode("ascii"),
+        "timing_ms": round(elapsed_ms, 1), "time_sec": body.time,
+        "log_profile": body.log_profile, "lut_applied": body.lut_path is not None,
+        "effects_applied": len(body.effects or []),
+    }
+
+
+@media_router.get("/preview/info")
+async def cut_preview_info() -> dict[str, Any]:
+    """MARKER_B20 — Preview decoder capabilities."""
+    from src.services.cut_preview_decoder import HAS_PYAV
+    return {
+        "success": True, "pyav_available": HAS_PYAV,
+        "decoder": "pyav" if HAS_PYAV else "ffmpeg",
+        "proxy_heights": [360, 540, 720, 1080], "default_proxy_height": 540,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Routes: Waveform, Probes, Codecs, Audio Segment, Thumbnail
+# ---------------------------------------------------------------------------
+
+
+@media_router.get("/waveform-peaks")
+async def cut_waveform_peaks(source_path: str, bins: int = 128, stereo: bool = False) -> dict[str, Any]:
+    """MARKER_B15/B29 — Per-clip waveform peaks (stereo support)."""
+    from src.services.cut_ffmpeg_waveform import build_waveform_with_fallback, build_stereo_waveform
+
+    bins = max(16, min(512, bins))
+    p = Path(source_path)
+    if not p.exists():
+        return {"success": False, "error": "file_not_found", "peaks": []}
+
+    if stereo:
+        left, right, degraded, reason = build_stereo_waveform(str(p), bins)
+        return {
+            "success": True, "source_path": str(p), "bins": bins, "stereo": True,
+            "peaks_left": left, "peaks_right": right, "peaks": left,
+            "degraded": degraded, "degraded_reason": reason,
+        }
+
+    peak_bins, degraded, reason = build_waveform_with_fallback(str(p), bins)
+    return {
+        "success": True, "source_path": str(p), "bins": bins, "stereo": False,
+        "peaks": peak_bins, "degraded": degraded, "degraded_reason": reason,
+    }
+
+
+@media_router.get("/codecs/available")
+async def cut_codecs_available() -> dict[str, Any]:
+    """MARKER_B38 — Detect which codecs are available in the system FFmpeg build."""
+    import shutil
+
+    ffmpeg = shutil.which("ffmpeg")
+    if not ffmpeg:
+        return {"success": False, "error": "ffmpeg_not_found"}
+
+    try:
+        result = subprocess.run([ffmpeg, "-codecs"], capture_output=True, text=True, timeout=10)
+        codec_output = result.stdout or ""
+    except Exception:
+        return {"success": False, "error": "ffmpeg_codecs_failed"}
+
+    codecs: dict[str, dict[str, Any]] = {}
+    our_codecs = {
+        "h264": "H.264 / AVC", "hevc": "H.265 / HEVC",
+        "prores": "Apple ProRes", "dnxhd": "DNxHD/DNxHR",
+        "dvvideo": "DV Video", "av1": "AV1",
+        "vp9": "VP9", "aac": "AAC",
+        "mp3": "MP3", "flac": "FLAC",
+        "pcm_s16le": "PCM 16-bit", "pcm_s24le": "PCM 24-bit",
+    }
+
+    for name, label in our_codecs.items():
+        can_decode = False
+        can_encode = False
+        for line in codec_output.split("\n"):
+            parts = line.strip().split()
+            if len(parts) >= 2 and parts[1] == name:
+                flags = parts[0]
+                can_decode = "D" in flags
+                can_encode = "E" in flags
+                break
+        codecs[name] = {"label": label, "decode": can_decode, "encode": can_encode}
+
+    version = ""
+    try:
+        ver_result = subprocess.run([ffmpeg, "-version"], capture_output=True, text=True, timeout=5)
+        first_line = (ver_result.stdout or "").split("\n")[0]
+        version = first_line.strip()
+    except Exception:
+        pass
+
+    return {
+        "success": True, "ffmpeg_version": version, "codecs": codecs,
+        "summary": {
+            "total": len(codecs),
+            "can_encode": sum(1 for c in codecs.values() if c["encode"]),
+            "can_decode": sum(1 for c in codecs.values() if c["decode"]),
+        },
+    }
+
+
+@media_router.get("/probe/streams")
+async def cut_probe_streams(source_path: str) -> dict[str, Any]:
+    """MARKER_B6.5 — Probe all streams in a media file."""
+    p = Path(source_path)
+    if not p.exists():
+        return {"success": False, "error": "file_not_found"}
+
+    result = probe_file(str(p))
+    if not result.ok:
+        return {"success": False, "error": result.error or "probe_failed"}
+
+    video_streams = [
+        {
+            "index": vs.index, "type": "video", "codec": vs.codec, "profile": vs.profile,
+            "width": vs.width, "height": vs.height, "fps": round(vs.fps, 3),
+            "pix_fmt": vs.pix_fmt, "bit_depth": vs.bit_depth,
+            "color_primaries": vs.color_primaries, "color_transfer": vs.color_transfer,
+        }
+        for vs in result.video_streams
+    ]
+    audio_streams = [
+        {
+            "index": a_s.index, "type": "audio", "codec": a_s.codec,
+            "channels": a_s.channels, "sample_rate": a_s.sample_rate, "bit_depth": a_s.bit_depth,
+        }
+        for a_s in result.audio_streams
+    ]
+
+    return {
+        "success": True, "source_path": str(p), "container": result.container,
+        "duration_sec": result.duration_sec, "file_size_bytes": result.file_size_bytes,
+        "streams": video_streams + audio_streams,
+        "video_count": len(video_streams), "audio_count": len(audio_streams),
+    }
+
+
+@media_router.get("/audio/clip-segment")
+async def cut_audio_clip_segment(
+    source_path: str, start_sec: float = 0.0, duration_sec: float = 10.0,
+    sample_rate: int = 44100, channels: int = 2,
+) -> Any:
+    """MARKER_B5.1 — Extract audio segment as WAV for Web Audio API playback."""
+    from src.services.cut_ffmpeg_waveform import extract_audio_wav_segment
+
+    p = Path(source_path)
+    if not p.exists():
+        return {"success": False, "error": "file_not_found"}
+
+    wav_bytes = extract_audio_wav_segment(
+        str(p),
+        start_sec=max(0, start_sec),
+        duration_sec=min(30.0, max(0.01, duration_sec)),
+        sample_rate=max(8000, min(48000, sample_rate)),
+        channels=max(1, min(2, channels)),
+    )
+    if wav_bytes is None:
+        return {"success": False, "error": "extraction_failed"}
+
+    return Response(
+        content=wav_bytes, media_type="audio/wav",
+        headers={"Content-Disposition": 'inline; filename="clip_audio.wav"', "Cache-Control": "public, max-age=3600"},
+    )
+
+
+# ---------------------------------------------------------------------------
+# MARKER_B42: Batch audio segment extraction for timeline playback
+# ---------------------------------------------------------------------------
+
+
+class CutAudioBatchSegment(BaseModel):
+    clip_id: str = ""
+    source_path: str
+    start_sec: float = 0.0
+    duration_sec: float = 10.0
+
+
+class CutAudioBatchRequest(BaseModel):
+    segments: list[CutAudioBatchSegment]
+    sample_rate: int = 44100
+    channels: int = 2
+
+
+@media_router.post("/audio/clip-segments-batch")
+async def cut_audio_clip_segments_batch(body: CutAudioBatchRequest) -> dict[str, Any]:
+    """
+    MARKER_B42 — Batch audio segment extraction for timeline playback.
+    Accepts up to 8 segments, extracts in parallel via ThreadPoolExecutor.
+    Returns per-clip WAV as base64 JSON (avoids N sequential HTTP requests).
+    """
+    import asyncio
+    from src.services.cut_ffmpeg_waveform import extract_audio_wav_segments_batch
+
+    if not body.segments:
+        return {"success": True, "segments": [], "count": 0}
+
+    if len(body.segments) > 8:
+        return {"success": False, "error": "max_8_segments_per_batch"}
+
+    seg_dicts = [
+        {"clip_id": s.clip_id, "source_path": s.source_path,
+         "start_sec": s.start_sec, "duration_sec": s.duration_sec}
+        for s in body.segments
+    ]
+
+    # Run in thread pool to not block event loop (FFmpeg subprocess calls)
+    loop = asyncio.get_running_loop()
+    results = await loop.run_in_executor(
+        None,
+        lambda: extract_audio_wav_segments_batch(
+            seg_dicts,
+            sample_rate=max(8000, min(48000, body.sample_rate)),
+            channels=max(1, min(2, body.channels)),
+        ),
+    )
+
+    # Encode WAV bytes to base64 for JSON transport
+    response_segments = []
+    for r in results:
+        entry: dict[str, Any] = {"clip_id": r["clip_id"], "success": r["success"]}
+        if r["success"] and r.get("wav_bytes"):
+            entry["wav_base64"] = base64.b64encode(r["wav_bytes"]).decode("ascii")
+            entry["size_bytes"] = len(r["wav_bytes"])
+        else:
+            entry["wav_base64"] = None
+            entry["error"] = r.get("error", "unknown")
+        response_segments.append(entry)
+
+    return {
+        "success": True,
+        "segments": response_segments,
+        "count": len(response_segments),
+        "success_count": sum(1 for s in response_segments if s["success"]),
+    }
+
+
+@media_router.get("/thumbnail")
+async def cut_thumbnail(
+    source_path: str, time_sec: float = 1.0, width: int = 320, height: int = 180,
+) -> Any:
+    """MARKER_B7.3 — Extract single-frame JPEG thumbnail from video."""
+    from src.services.cut_render_engine import generate_thumbnail
+
+    p = Path(source_path)
+    if not p.exists():
+        return {"success": False, "error": "file_not_found"}
+
+    cache_key = hashlib.md5(f"{source_path}|{time_sec}|{width}x{height}".encode()).hexdigest()
+    cache_dir = os.path.join(tempfile.gettempdir(), "cut_thumb_cache")
+    os.makedirs(cache_dir, exist_ok=True)
+    cache_path = os.path.join(cache_dir, f"{cache_key}.jpg")
+
+    if os.path.isfile(cache_path):
+        with open(cache_path, "rb") as f:
+            return Response(content=f.read(), media_type="image/jpeg",
+                          headers={"Cache-Control": "public, max-age=86400"})
+
+    result_path = generate_thumbnail(
+        str(p), output_path=cache_path,
+        seek_sec=max(0, time_sec), width=max(64, min(1920, width)), height=max(36, min(1080, height)),
+    )
+
+    if result_path and os.path.isfile(result_path):
+        with open(result_path, "rb") as f:
+            return Response(content=f.read(), media_type="image/jpeg",
+                          headers={"Cache-Control": "public, max-age=86400"})
+
+    return {"success": False, "error": "thumbnail_generation_failed"}
+
+
+@media_router.get("/thumbnail-strip")
+async def cut_thumbnail_strip(
+    source_path: str,
+    duration: float,
+    count: int = 5,
+    frame_height: int = 56,
+) -> Any:
+    """MARKER_B95 — Sprite sheet: N frames stitched horizontally into a single JPEG.
+
+    One HTTP request per clip instead of N. Frontend uses CSS background-position
+    to display individual frames.
+
+    Args:
+        source_path: Path to source media file.
+        duration: Clip duration in seconds.
+        count: Number of frames to extract (1-20).
+        frame_height: Height of each frame in px. Width auto-calculated from aspect ratio.
+
+    Returns:
+        Single JPEG image: frame_width*count × frame_height pixels.
+    """
+    p = Path(source_path)
+    if not p.exists():
+        return {"success": False, "error": "file_not_found"}
+
+    count = max(1, min(20, count))
+    frame_height = max(28, min(224, frame_height))
+
+    # Probe aspect ratio
+    try:
+        probe_cmd = [
+            "ffprobe", "-v", "error", "-select_streams", "v:0",
+            "-show_entries", "stream=width,height", "-of", "csv=p=0:s=x", str(p),
+        ]
+        probe = subprocess.run(probe_cmd, capture_output=True, text=True, timeout=5)
+        if probe.returncode != 0:
+            return {"success": False, "error": "probe_failed"}
+        dims = probe.stdout.strip().split("x")
+        orig_w, orig_h = int(dims[0]), int(dims[1])
+    except Exception:
+        return {"success": False, "error": "probe_failed"}
+
+    aspect = orig_w / max(orig_h, 1)
+    frame_width = int(frame_height * aspect)
+    frame_width += frame_width % 2  # must be even for ffmpeg
+
+    # Cache key
+    cache_key = hashlib.md5(
+        f"strip|{source_path}|{duration}|{count}|{frame_height}".encode()
+    ).hexdigest()
+    cache_dir = os.path.join(tempfile.gettempdir(), "cut_thumb_cache")
+    os.makedirs(cache_dir, exist_ok=True)
+    cache_path = os.path.join(cache_dir, f"strip_{cache_key}.jpg")
+
+    if os.path.isfile(cache_path):
+        with open(cache_path, "rb") as f:
+            return Response(
+                content=f.read(), media_type="image/jpeg",
+                headers={
+                    "Cache-Control": "public, max-age=86400",
+                    "X-Frame-Width": str(frame_width),
+                    "X-Frame-Count": str(count),
+                },
+            )
+
+    # Compute seek times (avoid first/last 5%)
+    times = []
+    if count == 1:
+        times.append(min(1.0, duration * 0.1))
+    else:
+        for i in range(count):
+            t = duration * 0.05 + (i / (count - 1)) * duration * 0.9
+            times.append(round(t, 2))
+
+    # Extract frames and stitch with ffmpeg filter_complex
+    # Build: input per seek time → scale → hstack
+    inputs: list[str] = []
+    filter_parts: list[str] = []
+    for i, t in enumerate(times):
+        inputs.extend(["-ss", str(t), "-i", str(p)])
+        filter_parts.append(f"[{i}:v]scale={frame_width}:{frame_height},setsar=1[f{i}]")
+
+    if count == 1:
+        filter_complex = f"{filter_parts[0]}; [f0]null[out]"
+    else:
+        labels = "".join(f"[f{i}]" for i in range(count))
+        filter_complex = "; ".join(filter_parts) + f"; {labels}hstack=inputs={count}[out]"
+
+    cmd = [
+        "ffmpeg", "-v", "error",
+        *inputs,
+        "-filter_complex", filter_complex,
+        "-map", "[out]", "-vframes", "1",
+        "-q:v", "5", "-f", "image2", cache_path,
+    ]
+
+    try:
+        result = subprocess.run(cmd, capture_output=True, timeout=30)
+        if result.returncode != 0:
+            logger.warning("Sprite sheet ffmpeg failed: %s", result.stderr[:500])
+            return {"success": False, "error": "ffmpeg_failed"}
+    except subprocess.TimeoutExpired:
+        return {"success": False, "error": "timeout"}
+
+    if os.path.isfile(cache_path):
+        with open(cache_path, "rb") as f:
+            return Response(
+                content=f.read(), media_type="image/jpeg",
+                headers={
+                    "Cache-Control": "public, max-age=86400",
+                    "X-Frame-Width": str(frame_width),
+                    "X-Frame-Count": str(count),
+                },
+            )
+
+    return {"success": False, "error": "sprite_generation_failed"}
+
+
+# ---------------------------------------------------------------------------
+# Routes: Audio Loudness
+# ---------------------------------------------------------------------------
+
+
+@media_router.get("/audio/loudness")
+async def cut_audio_loudness(source_path: str, standard: str = "ebu_r128") -> dict[str, Any]:
+    """MARKER_B17 — Analyze audio loudness (EBU R128 / ATSC A/85 / YouTube / etc)."""
+    from src.services.cut_audio_engine import analyze_loudness, LOUDNESS_STANDARDS
+    result = analyze_loudness(source_path, standard=standard)
+    return {**result.to_dict(), "standards_available": list(LOUDNESS_STANDARDS.keys())}
+
+
+@media_router.get("/audio/loudness-standards")
+async def cut_loudness_standards() -> dict[str, Any]:
+    """MARKER_B17 — List available loudness standards with targets."""
+    from src.services.cut_audio_engine import LOUDNESS_STANDARDS
+    return {"success": True, "standards": LOUDNESS_STANDARDS}
+
+
+# ---------------------------------------------------------------------------
+# MARKER_B46: Audio normalization — LUFS-targeted loudnorm filter for export
+# ---------------------------------------------------------------------------
+
+
+class CutAudioNormalizeRequest(BaseModel):
+    source_path: str
+    standard: str = "youtube"  # youtube, ebu_r128, atsc_a85, netflix, podcast
+    target_lufs: float | None = None  # override standard target
+
+
+@media_router.post("/audio/normalize")
+async def cut_audio_normalize(body: CutAudioNormalizeRequest) -> dict[str, Any]:
+    """
+    MARKER_B46 — Compute loudnorm filter parameters for LUFS-targeted normalization.
+
+    Analyzes source audio, returns FFmpeg loudnorm filter string ready for
+    insertion into render pipeline. Two-pass approach: measure first, then
+    return linear normalization params.
+    """
+    from src.services.cut_audio_engine import analyze_loudness, LOUDNESS_STANDARDS
+
+    p = Path(body.source_path)
+    if not p.exists():
+        return {"success": False, "error": "file_not_found"}
+
+    # Resolve target LUFS
+    std_config = LOUDNESS_STANDARDS.get(body.standard)
+    if body.target_lufs is not None:
+        target = body.target_lufs
+    elif std_config:
+        target = std_config["target_lufs"]
+    else:
+        return {"success": False, "error": f"unknown_standard: {body.standard}",
+                "available": list(LOUDNESS_STANDARDS.keys())}
+
+    max_tp = std_config["max_true_peak"] if std_config else -1.0
+
+    # Measure current loudness
+    measurement = analyze_loudness(str(p), standard=body.standard)
+    if not measurement.success:
+        return {"success": False, "error": "analysis_failed",
+                "detail": measurement.error}
+
+    # Build loudnorm filter string (FFmpeg two-pass)
+    # measured_I, measured_TP, measured_LRA, measured_thresh from first pass
+    loudnorm_filter = (
+        f"loudnorm=I={target:.1f}"
+        f":TP={max_tp:.1f}"
+        f":LRA=11"
+        f":measured_I={measurement.integrated_lufs:.1f}"
+        f":measured_TP={measurement.true_peak_dbfs:.1f}"
+        f":measured_LRA={measurement.lra:.1f}"
+        f":measured_thresh={measurement.integrated_lufs - 10:.1f}"
+        f":linear=true"
+    )
+
+    # Compute gain adjustment
+    gain_db = target - measurement.integrated_lufs
+
+    return {
+        "success": True,
+        "source_path": str(p),
+        "standard": body.standard,
+        "target_lufs": target,
+        "max_true_peak": max_tp,
+        "current_lufs": measurement.integrated_lufs,
+        "current_true_peak": measurement.true_peak_dbfs,
+        "current_lra": measurement.lra,
+        "gain_db": round(gain_db, 1),
+        "loudnorm_filter": loudnorm_filter,
+        "compliant": measurement.compliant,
+    }
+
+
+# ---------------------------------------------------------------------------
+# MARKER_B47: Media cache management
+# ---------------------------------------------------------------------------
+
+
+@media_router.get("/cache/status")
+async def cut_cache_status(sandbox_root: str) -> dict[str, Any]:
+    """
+    MARKER_B47 — Media cache disk usage: proxies, thumbnails, render artifacts.
+    """
+    proxy_dir = os.path.join(sandbox_root, "cut_runtime", "proxies")
+    render_dir = os.path.join(sandbox_root, "cut_runtime", "renders")
+    thumb_dir = os.path.join(tempfile.gettempdir(), "cut_thumb_cache")
+
+    def _dir_stats(d: str) -> dict[str, Any]:
+        if not os.path.isdir(d):
+            return {"path": d, "exists": False, "file_count": 0, "size_bytes": 0}
+        total = 0
+        count = 0
+        for entry in os.scandir(d):
+            if entry.is_file():
+                count += 1
+                total += entry.stat().st_size
+        return {"path": d, "exists": True, "file_count": count, "size_bytes": total}
+
+    proxy_stats = _dir_stats(proxy_dir)
+    render_stats = _dir_stats(render_dir)
+    thumb_stats = _dir_stats(thumb_dir)
+    total_bytes = proxy_stats["size_bytes"] + render_stats["size_bytes"] + thumb_stats["size_bytes"]
+
+    return {
+        "success": True,
+        "proxies": proxy_stats,
+        "renders": render_stats,
+        "thumbnails": thumb_stats,
+        "total_size_bytes": total_bytes,
+        "total_size_mb": round(total_bytes / (1024 * 1024), 1),
+    }
+
+
+class CutCacheCleanupRequest(BaseModel):
+    sandbox_root: str
+    project_id: str = ""
+    clean_proxies: bool = True
+    clean_thumbnails: bool = True
+    clean_renders: bool = False  # dangerous — default off
+
+
+@media_router.post("/cache/cleanup")
+async def cut_cache_cleanup(body: CutCacheCleanupRequest) -> dict[str, Any]:
+    """
+    MARKER_B47 — Clean stale cache: orphaned proxies, thumbnails, old renders.
+    Uses ProxyWorker.cleanup_stale() for proxy cleanup.
+    """
+    freed_bytes = 0
+    removed_files = 0
+
+    # Proxy cleanup — remove proxies for sources no longer in timeline
+    if body.clean_proxies:
+        from src.services.cut_proxy_worker import ProxyWorker
+        from src.services.cut_project_store import CutProjectStore as _CPS
+
+        store = _CPS(body.sandbox_root)
+        timeline = store.load_timeline_state() or {}
+        # Collect valid source paths from timeline
+        valid_sources: set[str] = set()
+        for lane in timeline.get("lanes", []):
+            for clip in lane.get("clips", []):
+                sp = clip.get("source_path", "")
+                if sp:
+                    valid_sources.add(sp)
+
+        worker = ProxyWorker(body.sandbox_root)
+        proxy_dir = os.path.join(body.sandbox_root, "cut_runtime", "proxies")
+        if os.path.isdir(proxy_dir):
+            before = sum(e.stat().st_size for e in os.scandir(proxy_dir) if e.is_file())
+            worker.cleanup_stale(valid_sources)
+            after = sum(e.stat().st_size for e in os.scandir(proxy_dir) if e.is_file())
+            freed_bytes += max(0, before - after)
+
+    # Thumbnail cleanup — wipe entire cache (regenerates on demand)
+    if body.clean_thumbnails:
+        thumb_dir = os.path.join(tempfile.gettempdir(), "cut_thumb_cache")
+        if os.path.isdir(thumb_dir):
+            for entry in os.scandir(thumb_dir):
+                if entry.is_file():
+                    try:
+                        freed_bytes += entry.stat().st_size
+                        os.remove(entry.path)
+                        removed_files += 1
+                    except OSError:
+                        pass
+
+    # Render cleanup — optional, removes all renders
+    if body.clean_renders:
+        render_dir = os.path.join(body.sandbox_root, "cut_runtime", "renders")
+        if os.path.isdir(render_dir):
+            for entry in os.scandir(render_dir):
+                if entry.is_file():
+                    try:
+                        freed_bytes += entry.stat().st_size
+                        os.remove(entry.path)
+                        removed_files += 1
+                    except OSError:
+                        pass
+
+    return {
+        "success": True,
+        "freed_bytes": freed_bytes,
+        "freed_mb": round(freed_bytes / (1024 * 1024), 1),
+        "removed_files": removed_files,
+        "cleaned": {
+            "proxies": body.clean_proxies,
+            "thumbnails": body.clean_thumbnails,
+            "renders": body.clean_renders,
+        },
+    }
+
+
+# ---------------------------------------------------------------------------
+# MARKER_B47: Conform / Relink (FCP7 Ch.44)
+# ---------------------------------------------------------------------------
+
+
+class CutConformCheckRequest(BaseModel):
+    sandbox_root: str
+    project_id: str = ""
+    search_roots: list[str] = []
+    auto_relink_threshold: float = 0.0  # MARKER_B49: auto-relink above this score
+
+
+@media_router.post("/conform/check")
+async def cut_conform_check(body: CutConformCheckRequest) -> dict[str, Any]:
+    """
+    MARKER_B47 + B49 — Check source files, auto-relink above threshold.
+    """
+    from src.services.cut_conform import check_project_media, relink_media
+    store = CutProjectStore(body.sandbox_root)
+    timeline = store.load_timeline_state() or {}
+
+    results, auto_remap = check_project_media(
+        timeline,
+        search_roots=body.search_roots or [],
+        auto_relink_threshold=body.auto_relink_threshold,
+    )
+
+    # MARKER_B49: Apply auto-relinks if threshold produced remap
+    auto_relinked = 0
+    if auto_remap:
+        relink_result = relink_media(timeline, auto_remap)
+        auto_relinked = relink_result["remapped_count"]
+        if auto_relinked > 0:
+            store.save_timeline_state(timeline)
+
+    online = sum(1 for r in results if r.status == "online")
+    offline = sum(1 for r in results if r.status == "offline")
+    moved = sum(1 for r in results if r.status == "moved")
+
+    return {
+        "success": True,
+        "media": [
+            {
+                "source_path": r.source_path,
+                "status": r.status,
+                "clip_ids": r.clip_ids,
+                "file_size": r.file_size,
+                "suggestions": r.suggestions,
+            }
+            for r in results
+        ],
+        "summary": {
+            "total": len(results),
+            "online": online,
+            "offline": offline,
+            "moved": moved,
+            "auto_relinked": auto_relinked,
+        },
+        "auto_remap": auto_remap,
+    }
+
+
+class CutConformRelinkRequest(BaseModel):
+    sandbox_root: str
+    project_id: str = ""
+    remap: dict[str, str]  # {old_path: new_path}
+
+
+@media_router.post("/conform/relink")
+async def cut_conform_relink(body: CutConformRelinkRequest) -> dict[str, Any]:
+    """
+    MARKER_B47 — Apply source path remapping across all timeline clips.
+    Persists updated timeline to project store.
+    """
+    from src.services.cut_conform import relink_media
+    store = CutProjectStore(body.sandbox_root)
+    timeline = store.load_timeline_state()
+    if timeline is None:
+        return {"success": False, "error": "timeline_not_found"}
+
+    result = relink_media(timeline, body.remap)
+
+    # Persist updated timeline
+    if result["remapped_count"] > 0:
+        store.save_timeline_state(timeline)
+
+    return {
+        "success": True,
+        **result,
+    }
+
+
+# ---------------------------------------------------------------------------
+# MARKER_B50: Effect defaults + listing API
+# ---------------------------------------------------------------------------
+
+
+@media_router.get("/effects/list")
+async def cut_effects_list() -> dict[str, Any]:
+    """MARKER_B50 — List all available effect types with params schema."""
+    from src.services.cut_effects_engine import list_effect_types
+    return {"success": True, "effects": list_effect_types()}
+
+
+@media_router.get("/effects/defaults/{effect_type}")
+async def cut_effects_defaults(effect_type: str) -> dict[str, Any]:
+    """MARKER_B50 — Get default params for an effect type."""
+    from src.services.cut_effects_engine import get_effect_defaults, EFFECT_DEFS
+    if effect_type not in EFFECT_DEFS:
+        return {"success": False, "error": f"unknown_effect: {effect_type}"}
+    return {"success": True, "effect_type": effect_type, "defaults": get_effect_defaults(effect_type)}
+
+
+# ---------------------------------------------------------------------------
+# MARKER_B52: Mixer state persistence
+# ---------------------------------------------------------------------------
+
+
+class CutMixerStateRequest(BaseModel):
+    sandbox_root: str
+    project_id: str = ""
+    lane_volumes: dict[str, float] = {}
+    lane_pans: dict[str, float] = {}
+    muted_lanes: list[str] = []
+    soloed_lanes: list[str] = []
+    master_volume: float = 1.0
+    master_pan: float = 0.0
+
+
+@media_router.post("/mixer/state")
+async def cut_mixer_state_save(body: CutMixerStateRequest) -> dict[str, Any]:
+    """MARKER_B52 — Persist audio mixer state to project store."""
+    store = CutProjectStore(body.sandbox_root)
+    timeline = store.load_timeline_state()
+    if not timeline:
+        return {"success": False, "error": "timeline_not_found"}
+
+    timeline["mixer_state"] = {
+        "lane_volumes": body.lane_volumes,
+        "lane_pans": body.lane_pans,
+        "muted_lanes": body.muted_lanes,
+        "soloed_lanes": body.soloed_lanes,
+        "master_volume": body.master_volume,
+        "master_pan": body.master_pan,
+    }
+    store.save_timeline_state(timeline)
+    return {"success": True, "mixer_state": timeline["mixer_state"]}
+
+
+@media_router.get("/mixer/state")
+async def cut_mixer_state_load(sandbox_root: str) -> dict[str, Any]:
+    """MARKER_B52 — Load persisted mixer state."""
+    store = CutProjectStore(sandbox_root)
+    timeline = store.load_timeline_state()
+    if not timeline:
+        return {"success": False, "error": "timeline_not_found"}
+
+    mixer = timeline.get("mixer_state", {})
+    return {"success": True, "mixer_state": mixer}
+
+
+# ---------------------------------------------------------------------------
+# MARKER_B51: Effect CRUD — apply/remove/reorder/clear per clip
+# ---------------------------------------------------------------------------
+
+
+class CutEffectApplyRequest(BaseModel):
+    sandbox_root: str
+    clip_id: str
+    effect_type: str
+    params: dict[str, Any] = {}
+    effect_id: str = ""  # auto-generated if empty
+
+
+class CutEffectRemoveRequest(BaseModel):
+    sandbox_root: str
+    clip_id: str
+    effect_id: str
+
+
+class CutEffectReorderRequest(BaseModel):
+    sandbox_root: str
+    clip_id: str
+    effect_ids: list[str]  # ordered list of effect IDs
+
+
+class CutEffectClearRequest(BaseModel):
+    sandbox_root: str
+    clip_id: str
+
+
+def _find_clip_in_timeline(timeline: dict[str, Any], clip_id: str) -> tuple[dict | None, dict | None]:
+    """Find clip dict + its lane in timeline. Returns (clip, lane) or (None, None)."""
+    for lane in timeline.get("lanes", []):
+        for clip in lane.get("clips", []):
+            if clip.get("clip_id") == clip_id:
+                return clip, lane
+    return None, None
+
+
+@media_router.post("/effects/apply")
+async def cut_effects_apply(body: CutEffectApplyRequest) -> dict[str, Any]:
+    """MARKER_B51 — Add effect to clip. Persists to project store."""
+    from src.services.cut_effects_engine import EFFECT_DEFS, get_effect_defaults
+    from uuid import uuid4
+
+    if body.effect_type not in EFFECT_DEFS:
+        return {"success": False, "error": f"unknown_effect: {body.effect_type}"}
+
+    store = CutProjectStore(body.sandbox_root)
+    timeline = store.load_timeline_state()
+    if not timeline:
+        return {"success": False, "error": "timeline_not_found"}
+
+    clip, lane = _find_clip_in_timeline(timeline, body.clip_id)
+    if not clip:
+        return {"success": False, "error": "clip_not_found"}
+
+    # Build effect entry
+    defaults = get_effect_defaults(body.effect_type)
+    merged_params = {**defaults, **body.params}
+    effect_id = body.effect_id or f"fx_{uuid4().hex[:8]}"
+
+    effect_entry = {
+        "effect_id": effect_id,
+        "type": body.effect_type,
+        "enabled": True,
+        "params": merged_params,
+    }
+
+    # Ensure effects structure
+    effects = clip.setdefault("effects", {})
+    video_effects = effects.setdefault("video_effects", [])
+    video_effects.append(effect_entry)
+
+    store.save_timeline_state(timeline)
+    return {"success": True, "effect_id": effect_id, "clip_id": body.clip_id, "effect": effect_entry}
+
+
+@media_router.post("/effects/remove")
+async def cut_effects_remove(body: CutEffectRemoveRequest) -> dict[str, Any]:
+    """MARKER_B51 — Remove specific effect from clip by effect_id."""
+    store = CutProjectStore(body.sandbox_root)
+    timeline = store.load_timeline_state()
+    if not timeline:
+        return {"success": False, "error": "timeline_not_found"}
+
+    clip, _ = _find_clip_in_timeline(timeline, body.clip_id)
+    if not clip:
+        return {"success": False, "error": "clip_not_found"}
+
+    effects = clip.get("effects", {})
+    video_effects = effects.get("video_effects", [])
+    before_count = len(video_effects)
+    effects["video_effects"] = [e for e in video_effects if e.get("effect_id") != body.effect_id]
+    removed = before_count - len(effects["video_effects"])
+
+    if removed > 0:
+        store.save_timeline_state(timeline)
+    return {"success": True, "removed": removed, "clip_id": body.clip_id}
+
+
+@media_router.post("/effects/reorder")
+async def cut_effects_reorder(body: CutEffectReorderRequest) -> dict[str, Any]:
+    """MARKER_B51 — Reorder effects on clip. Effect order matters for render."""
+    store = CutProjectStore(body.sandbox_root)
+    timeline = store.load_timeline_state()
+    if not timeline:
+        return {"success": False, "error": "timeline_not_found"}
+
+    clip, _ = _find_clip_in_timeline(timeline, body.clip_id)
+    if not clip:
+        return {"success": False, "error": "clip_not_found"}
+
+    effects = clip.get("effects", {})
+    video_effects = effects.get("video_effects", [])
+
+    # Build index by effect_id
+    by_id = {e["effect_id"]: e for e in video_effects if "effect_id" in e}
+    reordered = [by_id[eid] for eid in body.effect_ids if eid in by_id]
+    # Append any effects not in the order list at the end
+    remaining = [e for e in video_effects if e.get("effect_id") not in set(body.effect_ids)]
+    effects["video_effects"] = reordered + remaining
+
+    store.save_timeline_state(timeline)
+    return {"success": True, "clip_id": body.clip_id, "order": [e["effect_id"] for e in effects["video_effects"]]}
+
+
+@media_router.post("/effects/clear")
+async def cut_effects_clear(body: CutEffectClearRequest) -> dict[str, Any]:
+    """MARKER_B51 — Clear all effects from clip."""
+    store = CutProjectStore(body.sandbox_root)
+    timeline = store.load_timeline_state()
+    if not timeline:
+        return {"success": False, "error": "timeline_not_found"}
+
+    clip, _ = _find_clip_in_timeline(timeline, body.clip_id)
+    if not clip:
+        return {"success": False, "error": "clip_not_found"}
+
+    clip["effects"] = {"video_effects": [], "audio_effects": []}
+    store.save_timeline_state(timeline)
+    return {"success": True, "clip_id": body.clip_id}
+
+
+# ---------------------------------------------------------------------------
+# MARKER_B48: Multicam Sync Engine (FCP7 Ch.46-47)
+# ---------------------------------------------------------------------------
+
+# In-memory store for multicam clips (persisted per-session)
+_multicam_clips: dict[str, dict[str, Any]] = {}
+
+
+class CutMulticamCreateRequest(BaseModel):
+    source_paths: list[str]
+    sync_method: str = "waveform"  # waveform | timecode | marker
+    reference_index: int = 0
+    marker_times: list[float] = []  # for sync_method=marker
+    fps: float = 25.0              # for timecode sync
+    max_lag_sec: float = 30.0      # for waveform sync
+
+
+@media_router.post("/multicam/create")
+async def cut_multicam_create(body: CutMulticamCreateRequest) -> dict[str, Any]:
+    """
+    MARKER_B48 — Create multicam clip from multiple camera angles.
+    Syncs by waveform (cross-correlation), timecode, or markers.
+    Returns multicam_clip_id with aligned offsets per angle.
+    """
+    import asyncio
+    from src.services.cut_multicam_sync import (
+        sync_by_waveform,
+        sync_by_timecode,
+        sync_by_markers,
+    )
+    from datetime import datetime, timezone
+
+    if len(body.source_paths) < 2:
+        return {"success": False, "error": "need_at_least_2_sources"}
+
+    # Validate files exist
+    missing = [p for p in body.source_paths if not os.path.isfile(p)]
+    if missing:
+        return {"success": False, "error": "files_not_found", "missing": missing}
+
+    loop = asyncio.get_running_loop()
+
+    if body.sync_method == "waveform":
+        multicam = await loop.run_in_executor(None, lambda: sync_by_waveform(
+            body.source_paths,
+            reference_index=body.reference_index,
+            max_lag_sec=body.max_lag_sec,
+        ))
+    elif body.sync_method == "timecode":
+        multicam = await loop.run_in_executor(None, lambda: sync_by_timecode(
+            body.source_paths, fps=body.fps,
+        ))
+    elif body.sync_method == "marker":
+        if len(body.marker_times) != len(body.source_paths):
+            return {"success": False, "error": "marker_times_count_mismatch"}
+        multicam = sync_by_markers(body.source_paths, body.marker_times)
+    else:
+        return {"success": False, "error": f"unknown_sync_method: {body.sync_method}"}
+
+    multicam.created_at = datetime.now(timezone.utc).isoformat()
+
+    # Store in memory
+    mc_dict = multicam.to_dict()
+    _multicam_clips[multicam.multicam_id] = mc_dict
+
+    return {"success": True, **mc_dict}
+
+
+@media_router.get("/multicam/{multicam_id}")
+async def cut_multicam_get(multicam_id: str) -> dict[str, Any]:
+    """MARKER_B48 — Get multicam clip state."""
+    mc = _multicam_clips.get(multicam_id)
+    if not mc:
+        return {"success": False, "error": "multicam_not_found"}
+    return {"success": True, **mc}
+
+
+class CutMulticamSwitchRequest(BaseModel):
+    multicam_id: str
+    angle_index: int
+    switch_time_sec: float
+    duration_sec: float = 5.0
+
+
+@media_router.post("/multicam/switch")
+async def cut_multicam_switch(body: CutMulticamSwitchRequest) -> dict[str, Any]:
+    """
+    MARKER_B48 — Generate a timeline clip for switching to a specific angle.
+    Returns clip dict ready for timeline insertion (FCP7 Ch.47).
+    """
+    from src.services.cut_multicam_sync import MulticamClip, MulticamAngle, build_multicam_switch_clip
+
+    mc_dict = _multicam_clips.get(body.multicam_id)
+    if not mc_dict:
+        return {"success": False, "error": "multicam_not_found"}
+
+    # Reconstruct MulticamClip from dict
+    multicam = MulticamClip(
+        multicam_id=mc_dict["multicam_id"],
+        angles=[MulticamAngle(**a) for a in mc_dict["angles"]],
+        sync_method=mc_dict["sync_method"],
+        reference_index=mc_dict["reference_index"],
+        total_duration_sec=mc_dict["total_duration_sec"],
+    )
+
+    try:
+        clip = build_multicam_switch_clip(
+            multicam, body.angle_index, body.switch_time_sec, body.duration_sec,
+        )
+    except ValueError as e:
+        return {"success": False, "error": str(e)}
+
+    return {"success": True, "clip": clip}
+
+
+# ---------------------------------------------------------------------------
+# MARKER_B62 — Video/Audio Streaming for Browser Playback
+# MARKER_B73 — Transcode-on-the-fly for non-browser-native formats
+# ---------------------------------------------------------------------------
+
+import re as _re
+import threading
+
+from fastapi import Request
+from fastapi.responses import StreamingResponse
+
+_STREAM_ALLOWED_EXT = {
+    ".mp4", ".mov", ".m4v", ".webm", ".mkv", ".avi", ".mxf",
+    ".mp3", ".wav", ".m4a", ".aac", ".flac", ".ogg", ".aiff", ".aif",
+}
+
+_MIME_MAP = {
+    ".mp4": "video/mp4",
+    ".mov": "video/quicktime",
+    ".m4v": "video/x-m4v",
+    ".webm": "video/webm",
+    ".mkv": "video/x-matroska",
+    ".avi": "video/x-msvideo",
+    ".mxf": "application/mxf",
+    ".mp3": "audio/mpeg",
+    ".wav": "audio/wav",
+    ".m4a": "audio/mp4",
+    ".aac": "audio/aac",
+    ".flac": "audio/flac",
+    ".ogg": "audio/ogg",
+    ".aiff": "audio/aiff",
+    ".aif": "audio/aiff",
+}
+
+_RANGE_RE = _re.compile(r"bytes=(\d+)-(\d*)")
+
+# ---------------------------------------------------------------------------
+# MARKER_B73: Browser-native codec detection + transcode cache
+# ---------------------------------------------------------------------------
+
+# Video codecs Chrome can decode natively
+_BROWSER_NATIVE_VIDEO = {"h264", "vp8", "vp9", "av1", "theora"}
+# Audio codecs Chrome can decode natively
+_BROWSER_NATIVE_AUDIO = {"aac", "mp3", "opus", "vorbis", "flac", "mp4a"}
+# Containers Chrome can demux natively
+_BROWSER_NATIVE_CONTAINERS = {"mp4", "mov", "webm", "ogg", "m4v", "m4a", "mp3", "flac"}
+
+# In-progress transcode lock per source path (prevents duplicate transcodes)
+_transcode_locks: dict[str, threading.Lock] = {}
+_transcode_locks_guard = threading.Lock()
+
+_TRANSCODE_CACHE_DIR_NAME = "cut_stream_cache"
+
+
+def _get_transcode_cache_dir() -> Path:
+    """Get or create the transcode cache directory."""
+    cache_dir = Path.home() / ".cut_cache" / _TRANSCODE_CACHE_DIR_NAME
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    return cache_dir
+
+
+def _cache_key(source_path: Path) -> str:
+    """Stable cache key from file path + mtime + size."""
+    stat = source_path.stat()
+    raw = f"{source_path}:{stat.st_mtime_ns}:{stat.st_size}"
+    return hashlib.sha256(raw.encode()).hexdigest()[:16]
+
+
+def _needs_browser_transcode(source_path: Path) -> dict[str, Any] | None:
+    """
+    Probe file and decide if transcode is needed for browser playback.
+    Returns None if native playback is fine.
+    Returns dict with transcode instructions if needed.
+    """
+    try:
+        probe = probe_file(str(source_path), timeout=5.0)
+    except Exception:
+        return None
+
+    if not probe.ok:
+        return None
+
+    video_codec = (probe.video_codec or "").lower()
+    audio_codec = (probe.audio_codec or "").lower()
+    container = (probe.container or "").lower()
+    container_parts = {c.strip() for c in container.split(",") if c.strip()}
+
+    video_native = (not video_codec) or video_codec in _BROWSER_NATIVE_VIDEO
+    audio_native = (not audio_codec) or audio_codec in _BROWSER_NATIVE_AUDIO
+    container_native = bool(container_parts & _BROWSER_NATIVE_CONTAINERS)
+
+    if video_native and audio_native and container_native:
+        return None
+
+    # Build transcode command parts
+    result: dict[str, Any] = {"video_codec": video_codec, "audio_codec": audio_codec}
+
+    # Video: copy if browser-native, transcode otherwise
+    if video_native and video_codec:
+        result["v_args"] = ["-c:v", "copy"]
+    elif video_codec:
+        result["v_args"] = ["-c:v", "libx264", "-preset", "fast", "-crf", "18"]
+    else:
+        result["v_args"] = ["-vn"]
+
+    # Audio: copy if browser-native, transcode to AAC otherwise
+    if audio_native and audio_codec:
+        result["a_args"] = ["-c:a", "copy"]
+    elif audio_codec:
+        result["a_args"] = ["-c:a", "aac", "-b:a", "256k"]
+    else:
+        result["a_args"] = ["-an"]
+
+    return result
+
+
+def _get_or_transcode(source_path: Path) -> Path | None:
+    """
+    Return path to browser-playable version of the file.
+    Returns None if no transcode needed (serve original).
+    Returns cached transcoded file path if transcode was done.
+    """
+    decision = _needs_browser_transcode(source_path)
+    if decision is None:
+        return None
+
+    cache_dir = _get_transcode_cache_dir()
+    key = _cache_key(source_path)
+    cached = cache_dir / f"{key}.mp4"
+
+    # Fast path: cache hit
+    if cached.exists() and cached.stat().st_size > 0:
+        return cached
+
+    # Get per-file lock to prevent duplicate transcodes
+    with _transcode_locks_guard:
+        if str(source_path) not in _transcode_locks:
+            _transcode_locks[str(source_path)] = threading.Lock()
+        lock = _transcode_locks[str(source_path)]
+
+    with lock:
+        # Double-check after acquiring lock
+        if cached.exists() and cached.stat().st_size > 0:
+            return cached
+
+        # Transcode to fragmented MP4
+        tmp_path = cached.with_suffix(".tmp.mp4")
+        cmd = [
+            "ffmpeg", "-y", "-i", str(source_path),
+            *decision["v_args"],
+            *decision["a_args"],
+            "-f", "mp4",
+            "-movflags", "+faststart",
+            str(tmp_path),
+        ]
+
+        try:
+            subprocess.run(
+                cmd, capture_output=True, timeout=600,
+                check=True,
+            )
+            tmp_path.rename(cached)
+            return cached
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError):
+            tmp_path.unlink(missing_ok=True)
+            return None
+        finally:
+            # Clean up lock if no longer needed
+            with _transcode_locks_guard:
+                _transcode_locks.pop(str(source_path), None)
+
+
+def _serve_file_range(
+    file_path: Path,
+    content_type: str,
+    range_header: str | None,
+) -> StreamingResponse:
+    """Serve a file with optional HTTP Range support."""
+    file_size = file_path.stat().st_size
+
+    if range_header:
+        match = _RANGE_RE.match(range_header)
+        if not match:
+            raise HTTPException(status_code=416, detail="Invalid Range header")
+
+        start = int(match.group(1))
+        end_str = match.group(2)
+        end = int(end_str) if end_str else file_size - 1
+
+        if start >= file_size or end >= file_size or start > end:
+            raise HTTPException(
+                status_code=416,
+                detail="Range not satisfiable",
+                headers={"Content-Range": f"bytes */{file_size}"},
+            )
+
+        content_length = end - start + 1
+
+        def _range_iter():
+            chunk_size = 64 * 1024
+            with open(file_path, "rb") as f:
+                f.seek(start)
+                remaining = content_length
+                while remaining > 0:
+                    read_size = min(chunk_size, remaining)
+                    data = f.read(read_size)
+                    if not data:
+                        break
+                    remaining -= len(data)
+                    yield data
+
+        return StreamingResponse(
+            _range_iter(),
+            status_code=206,
+            media_type=content_type,
+            headers={
+                "Content-Range": f"bytes {start}-{end}/{file_size}",
+                "Content-Length": str(content_length),
+                "Accept-Ranges": "bytes",
+                "Cache-Control": "public, max-age=3600",
+            },
+        )
+
+    # Full file response
+    def _full_iter():
+        chunk_size = 64 * 1024
+        with open(file_path, "rb") as f:
+            while True:
+                data = f.read(chunk_size)
+                if not data:
+                    break
+                yield data
+
+    return StreamingResponse(
+        _full_iter(),
+        status_code=200,
+        media_type=content_type,
+        headers={
+            "Content-Length": str(file_size),
+            "Accept-Ranges": "bytes",
+            "Cache-Control": "public, max-age=3600",
+        },
+    )
+
+
+@media_router.get("/stream")
+async def cut_media_stream(request: Request, source_path: str) -> StreamingResponse:
+    """
+    MARKER_B62+B73: HTTP Range-aware video/audio streaming for browser playback.
+    Auto-detects non-browser-native codecs (ProRes, PCM, DNxHD, etc.) and serves
+    a transcoded MP4/H.264+AAC from disk cache. Native files pass through directly.
+    """
+    source_path = source_path.strip()
+    if not source_path or not os.path.isabs(source_path):
+        raise HTTPException(status_code=400, detail="source_path must be an absolute path")
+
+    file_path = Path(source_path)
+    if not file_path.exists() or not file_path.is_file():
+        raise HTTPException(status_code=404, detail="File not found")
+
+    ext = file_path.suffix.lower()
+    if ext not in _STREAM_ALLOWED_EXT:
+        raise HTTPException(status_code=415, detail=f"Unsupported media type: {ext}")
+
+    # MARKER_B73: Check if transcode needed for browser playback
+    transcoded = _get_or_transcode(file_path)
+    if transcoded is not None:
+        # Serve transcoded MP4 — always video/mp4 content type
+        return _serve_file_range(transcoded, "video/mp4", request.headers.get("range"))
+
+    # Native file — serve directly
+    content_type = _MIME_MAP.get(ext, "application/octet-stream")
+    return _serve_file_range(file_path, content_type, request.headers.get("range"))
+
+
+# ---------------------------------------------------------------------------
+# MARKER_HLS_STREAM: HLS adaptive streaming for non-browser codecs
+# ---------------------------------------------------------------------------
+
+try:
+    from src.services.cut_hls_streamer import HLSStreamer
+    _HAS_HLS = True
+except ImportError:
+    _HAS_HLS = False
+
+
+def _require_hls():
+    """Guard: raise 501 if HLS module not available."""
+    if not _HAS_HLS:
+        raise HTTPException(
+            status_code=501,
+            detail="HLS streaming not available (cut_hls_streamer module missing)",
+        )
+
+
+@media_router.get("/stream/hls")
+async def cut_stream_hls_start(source_path: str):
+    """
+    Start or resume HLS transcode for a non-browser-native media file.
+    Returns job status + playlist URL. Browser polls this until status=transcoding,
+    then fetches the .m3u8 playlist which grows as segments are encoded.
+
+    For browser-native files, returns redirect hint to use /cut/stream directly.
+    """
+    _require_hls()
+    source_path = source_path.strip()
+    if not source_path or not os.path.isabs(source_path):
+        raise HTTPException(status_code=400, detail="source_path must be an absolute path")
+
+    file_path = Path(source_path)
+    if not file_path.exists() or not file_path.is_file():
+        raise HTTPException(status_code=404, detail="File not found")
+
+    ext = file_path.suffix.lower()
+    if ext not in _STREAM_ALLOWED_EXT:
+        raise HTTPException(status_code=415, detail=f"Unsupported media type: {ext}")
+
+    # Check if transcode is needed at all
+    decision = _needs_browser_transcode(file_path)
+    if decision is None:
+        return {
+            "success": True,
+            "hls_needed": False,
+            "message": "File is browser-native, use /cut/stream directly",
+            "stream_url": f"/api/cut/stream?source_path={source_path}",
+        }
+
+    # Start or resume HLS job
+    streamer = HLSStreamer.get_instance()
+    job = streamer.start_or_get(
+        source_path=file_path,
+        v_args=decision.get("v_args", ["-c:v", "libx264", "-preset", "fast", "-crf", "18"]),
+        a_args=decision.get("a_args", ["-c:a", "aac", "-b:a", "256k"]),
+    )
+
+    return {
+        "success": True,
+        "hls_needed": True,
+        **job.to_dict(),
+    }
+
+
+@media_router.get("/stream/hls/playlist/{job_id}")
+async def cut_stream_hls_playlist(job_id: str):
+    """
+    Serve the .m3u8 playlist for an active HLS transcode job.
+    Returns 404 if job not found, 202 if playlist not ready yet.
+    """
+    _require_hls()
+    streamer = HLSStreamer.get_instance()
+    job = streamer.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="HLS job not found")
+
+    if not job.playlist_path.exists() or job.playlist_path.stat().st_size == 0:
+        # Playlist not written yet — client should retry
+        return Response(
+            content="",
+            status_code=202,
+            headers={"Retry-After": "1"},
+        )
+
+    # Serve playlist — rewrite segment filenames to API URLs
+    raw = job.playlist_path.read_text(encoding="utf-8")
+    lines = []
+    for line in raw.splitlines():
+        stripped = line.strip()
+        if stripped and not stripped.startswith("#"):
+            # Rewrite bare segment filename → API endpoint
+            lines.append(f"/api/cut/stream/hls/segment/{job_id}/{stripped}")
+        else:
+            lines.append(line)
+    content = "\n".join(lines) + "\n"
+
+    return Response(
+        content=content,
+        media_type="application/vnd.apple.mpegurl",
+        headers={
+            "Cache-Control": "no-cache, no-store",
+            "Access-Control-Allow-Origin": "*",
+        },
+    )
+
+
+@media_router.get("/stream/hls/segment/{job_id}/{segment_name}")
+async def cut_stream_hls_segment(request: Request, job_id: str, segment_name: str):
+    """
+    Serve a .ts segment from an HLS transcode job.
+    Supports HTTP Range for seeking.
+    """
+    _require_hls()
+    streamer = HLSStreamer.get_instance()
+    seg_path = streamer.get_segment_path(job_id, segment_name)
+    if not seg_path:
+        raise HTTPException(status_code=404, detail="Segment not found")
+
+    return _serve_file_range(seg_path, "video/mp2t", request.headers.get("range"))
+
+
+@media_router.get("/stream/hls/status/{job_id}")
+async def cut_stream_hls_status(job_id: str):
+    """Get HLS transcode job status."""
+    _require_hls()
+    streamer = HLSStreamer.get_instance()
+    job = streamer.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="HLS job not found")
+    return {"success": True, **job.to_dict()}
+
+
+@media_router.get("/stream/hls/jobs")
+async def cut_stream_hls_jobs():
+    """List all HLS transcode jobs."""
+    _require_hls()
+    streamer = HLSStreamer.get_instance()
+    return {"success": True, "jobs": streamer.list_jobs()}
+
+
+@media_router.delete("/stream/hls/{job_id}")
+async def cut_stream_hls_cancel(job_id: str):
+    """Cancel an active HLS transcode job."""
+    _require_hls()
+    streamer = HLSStreamer.get_instance()
+    cancelled = streamer.cancel(job_id)
+    if not cancelled:
+        raise HTTPException(status_code=404, detail="Job not found or not active")
+    return {"success": True, "job_id": job_id, "status": "cancelled"}
+
+
+# ---------------------------------------------------------------------------
+# Routes: Motion Analysis (MARKER_B74)
+# ---------------------------------------------------------------------------
+
+
+class CutMotionAnalyzeRequest(BaseModel):
+    """Request for optical flow motion intensity analysis."""
+    video_path: str | None = None
+    project_id: str | None = None
+    clip_id: str | None = None
+    sandbox_root: str | None = None
+    fps: float = 24.0
+    sample_every_n: int = 5
+    spike_threshold: float = 0.7
+
+
+@media_router.post("/analyze/motion")
+async def cut_analyze_motion(body: CutMotionAnalyzeRequest) -> dict[str, Any]:
+    """
+    MARKER_B74 — Optical flow motion intensity analysis for PULSE scene scoring.
+
+    Computes per-frame motion intensity (0.0=static, 1.0=max motion) using
+    OpenCV Farneback dense optical flow on sampled frames.
+
+    Accepts either:
+      - video_path: absolute path to video file (direct mode)
+      - project_id + clip_id + sandbox_root: look up clip from project store
+
+    Returns MotionProfile JSON including motion_samples, avg_motion, max_motion,
+    motion_variance, cut_density (estimated cuts/min), and spike timestamps.
+
+    Runs analysis in a background thread (non-blocking for long files).
+    """
+    import asyncio
+    from concurrent.futures import ThreadPoolExecutor
+
+    from src.services.cut_motion_analyzer import get_motion_analyzer
+
+    # Resolve video path
+    video_path: str | None = body.video_path
+
+    if not video_path and body.project_id and body.clip_id and body.sandbox_root:
+        # Look up clip from project store
+        try:
+            store = CutProjectStore(body.sandbox_root)
+            media_index = store.load_media_index()
+            if media_index:
+                clips = media_index.get("clips") or media_index.get("files") or []
+                for clip in clips:
+                    if str(clip.get("clip_id") or clip.get("id") or "") == str(body.clip_id):
+                        video_path = clip.get("path") or clip.get("source_path")
+                        break
+        except Exception as exc:
+            logger.warning("Failed to load clip from store: %s", exc)
+
+    if not video_path:
+        raise HTTPException(
+            status_code=400,
+            detail="video_path required, or provide project_id + clip_id + sandbox_root",
+        )
+
+    if not os.path.isabs(video_path):
+        raise HTTPException(status_code=400, detail="video_path must be absolute")
+
+    analyzer = get_motion_analyzer()
+
+    # Run in thread pool — optical flow is CPU-heavy
+    loop = asyncio.get_event_loop()
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        profile = await loop.run_in_executor(
+            pool,
+            lambda: analyzer.analyze_clip(
+                video_path,
+                fps=body.fps,
+                sample_every_n=body.sample_every_n,
+            ),
+        )
+
+    # Compute spike timestamps
+    spikes = analyzer.detect_motion_spikes(profile, threshold=body.spike_threshold)
+
+    result = profile.to_dict()
+    result["spike_timestamps"] = spikes
+    result["spike_count"] = len(spikes)
+    result["success"] = not bool(profile.error)
+    result["video_path"] = video_path
+
+    return result

@@ -170,20 +170,23 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
 
 ## Related Modules
 
-| Module | Public Repo | Location in vetka-mcp-full |
-|--------|-------------|----------------------------|
-| MCP Server | [vetka-mcp-core](https://github.com/danilagoleen/vetka-mcp-core) | `src/mcp/` |
-| Memory Stack | [vetka-memory-stack](https://github.com/danilagoleen/vetka-memory-stack) | `src/memory/` |
-| Orchestration | [vetka-orchestration-core](https://github.com/danilagoleen/vetka-orchestration-core) | `src/orchestration/` |
-| Search & Retrieval | [vetka-search-retrieval](https://github.com/danilagoleen/vetka-search-retrieval) | `src/search/` |
-| Bridge Core | [vetka-bridge-core](https://github.com/danilagoleen/vetka-bridge-core) | `src/bridge/` |
-| Elisya Runtime | [vetka-elisya-runtime](https://github.com/danilagoleen/vetka-elisya-runtime) | `src/elisya/` |
-| Ingest Engine | [vetka-ingest-engine](https://github.com/danilagoleen/vetka-ingest-engine) | `src/scanners/` |
-| Agents | [vetka-agents](https://github.com/danilagoleen/vetka-agents) | `src/agents/` |
-| Reflex Engine | (in monorepo) | `src/services/reflex*` |
-| API Endpoints | (in MCP server) | `src/mcp/` + `src/api/` |
+This wrapper bundles modules from these public repos:
 
-> **Note:** This wrapper (`vetka-mcp-full`) bundles ALL modules. For individual module development, use the specific public repos above.
+| Module | Public Repo | Prefix in Monorepo | Status in Wrapper |
+|--------|-------------|-------------------|-------------------|
+| MCP Server | [vetka-mcp-core](https://github.com/danilagoleen/vetka-mcp-core) | `src/mcp` | ✅ Included |
+| Memory Stack | [vetka-memory-stack](https://github.com/danilagoleen/vetka-memory-stack) | `src/memory` | ✅ Included |
+| Orchestration | [vetka-orchestration-core](https://github.com/danilagoleen/vetka-orchestration-core) | `src/orchestration` | ✅ Included |
+| Search & Retrieval | [vetka-search-retrieval](https://github.com/danilagoleen/vetka-search-retrieval) | `src/search` | ✅ Included |
+| Bridge Core | [vetka-bridge-core](https://github.com/danilagoleen/vetka-bridge-core) | `src/bridge` | ✅ Included |
+| Elisya Runtime | [vetka-elisya-runtime](https://github.com/danilagoleen/vetka-elisya-runtime) | `src/elisya` | ✅ Included |
+| Ingest Engine | [vetka-ingest-engine](https://github.com/danilagoleen/vetka-ingest-engine) | `src/scanners` | ✅ Included |
+| Agents | [vetka-agents](https://github.com/danilagoleen/vetka-agents) | `vetka-agents-wrapper` | ✅ Included |
+| Task Board | [vetka-taskboard](https://github.com/danilagoleen/vetka-taskboard) | `scripts/task_board.py` | ✅ Included |
+| Reflex Engine | (part of monorepo) | `src/services/reflex*.py` | ✅ Included |
+| API Endpoints | (in monorepo) | `src/api/` | ✅ Included |
+
+> **Note:** `vetka-mcp-full` now includes ALL modules from the monorepo.
 
 ## Development
 
