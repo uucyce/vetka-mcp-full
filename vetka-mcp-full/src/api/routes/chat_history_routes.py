@@ -1,0 +1,902 @@
+"""
+Chat History Routes - Phase 50
+API endpoints for managing chat history and conversation persistence.
+
+@file chat_history_routes.py
+@status ACTIVE
+@phase Phase 50 - Chat History + Sidebar UI
+@lastUpdate 2026-01-06
+
+Endpoints:
+- GET /api/chats - List all chats (for sidebar)
+- GET /api/chats/{chat_id} - Get single chat with messages
+- POST /api/chats/{chat_id}/messages - Add message to chat
+- DELETE /api/chats/{chat_id} - Delete chat
+- GET /api/chats/search - Search messages across chats
+"""
+
+from fastapi import APIRouter, HTTPException, Request
+from pydantic import BaseModel
+from typing import Optional, List, Dict, Any
+from datetime import datetime
+from src.chat.chat_history_manager import get_chat_history_manager
+
+
+router = APIRouter(prefix="/api", tags=["chat-history"])
+
+
+# ============================================================
+# PYDANTIC MODELS
+# ============================================================
+
+class MessageRequest(BaseModel):
+    """Message to add to chat."""
+    role: str  # 'user', 'assistant', 'agent'
+    content: Optional[str] = None
+    text: Optional[str] = None  # Backwards compatibility
+    agent: Optional[str] = None
+    model: Optional[str] = None
+    message_type: Optional[str] = "text"
+    metadata: Optional[Dict[str, Any]] = None
+
+
+class ChatResponse(BaseModel):
+    """Chat object for responses."""
+    id: str
+    file_path: str
+    file_name: str
+    display_name: Optional[str] = None  # Phase 74: Custom chat name
+    context_type: Optional[str] = None  # Phase 74: "file" | "folder" | "group" | "topic"
+    items: Optional[List[str]] = None   # Phase 74: File paths for groups
+    topic: Optional[str] = None         # Phase 74: Topic for file-less chats
+    chat_kind: Optional[str] = None     # MARKER_137.4L: "solo" | "team"
+    is_favorite: Optional[bool] = False # MARKER_137.3: Favorites support
+    created_at: str
+    updated_at: str
+    message_count: Optional[int] = None
+
+
+class MessageResponse(BaseModel):
+    """Message object for responses."""
+    id: str
+    role: str
+    content: Optional[str] = None
+    agent: Optional[str] = None
+    model: Optional[str] = None
+    model_source: Optional[str] = None      # MARKER_152.FIX2: Provider routing (polza, xai, openrouter)
+    model_provider: Optional[str] = None    # MARKER_152.FIX2: Provider type for display
+    message_type: Optional[str] = "text"
+    metadata: Optional[Dict[str, Any]] = None
+    timestamp: str
+
+
+# ============================================================
+# API ENDPOINTS
+# ============================================================
+
+@router.get("/chats", response_model=Dict[str, Any])
+async def list_chats(
+    request: Request,
+    limit: int = 50,
+    offset: int = 0
+):
+    """
+    Get chats for sidebar with pagination.
+
+    Phase 107.3: Pagination support to prevent loading 4MB+ chat files.
+
+    Args:
+        limit: Max chats to return (default 50, max 200)
+        offset: Skip first N chats (default 0)
+
+    Returns:
+        Dict with 'chats' list, 'total' count, and pagination metadata
+    """
+    try:
+        # Limit max value to prevent abuse
+        limit = min(limit, 200)
+
+        manager = get_chat_history_manager()
+        all_chats = manager.get_all_chats(limit=limit, offset=offset)
+        total_count = manager.get_total_chats_count()
+
+        chat_responses = []
+        for chat in all_chats:
+            chat_responses.append(ChatResponse(
+                id=chat["id"],
+                file_path=chat["file_path"],
+                file_name=chat["file_name"],
+                display_name=chat.get("display_name"),       # Phase 74
+                context_type=chat.get("context_type", "file"),  # Phase 74
+                items=chat.get("items"),                     # Phase 74
+                topic=chat.get("topic"),                     # Phase 74
+                chat_kind=manager.infer_chat_kind(chat),     # MARKER_137.4L
+                is_favorite=chat.get("is_favorite", False),  # MARKER_137.3
+                created_at=chat["created_at"],
+                updated_at=chat["updated_at"],
+                message_count=len(chat.get("messages", []))
+            ))
+
+        return {
+            "chats": chat_responses,
+            "total": total_count,
+            "limit": limit,
+            "offset": offset,
+            "has_more": (offset + limit) < total_count
+        }
+
+    except Exception as e:
+        print(f"[ChatHistory] Error listing chats: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/chats/{chat_id}", response_model=Dict[str, Any])
+async def get_chat(chat_id: str, request: Request):
+    """
+    Get single chat with all messages.
+
+    Args:
+        chat_id: Chat UUID
+
+    Returns:
+        Chat object with messages
+    """
+    try:
+        manager = get_chat_history_manager()
+        chat = manager.get_chat(chat_id)
+
+        if not chat:
+            raise HTTPException(status_code=404, detail=f"Chat {chat_id} not found")
+
+        # Format messages
+        # Phase 74 fix: Ensure content is never None (fallback to empty string)
+        messages = []
+        for msg in chat.get("messages", []):
+            messages.append(MessageResponse(
+                id=msg.get("id"),
+                role=msg.get("role"),
+                content=msg.get("content") or msg.get("text") or "",
+                agent=msg.get("agent"),
+                model=msg.get("model"),
+                model_source=msg.get("model_source"),          # MARKER_152.FIX2
+                model_provider=msg.get("model_provider"),      # MARKER_152.FIX2
+                message_type=msg.get("message_type", "text"),
+                metadata=msg.get("metadata") or {},
+                timestamp=msg.get("timestamp", "")
+            ))
+
+        # MARKER_152.FIX2: Extract last used model+source from most recent assistant message
+        last_model = None
+        last_model_source = None
+        for msg in reversed(chat.get("messages", [])):
+            if msg.get("role") == "assistant" and msg.get("model"):
+                last_model = msg["model"]
+                last_model_source = msg.get("model_source")
+                break
+
+        return {
+            "id": chat["id"],
+            "file_path": chat["file_path"],
+            "file_name": chat["file_name"],
+            "display_name": chat.get("display_name"),           # Phase 74.3
+            "context_type": chat.get("context_type", "file"),   # Phase 74.3
+            "items": chat.get("items"),                         # Phase 74.3
+            "topic": chat.get("topic"),                         # Phase 74.3
+            "group_id": chat.get("group_id"),                   # Phase 80.5
+            "pinned_file_ids": chat.get("pinned_file_ids", []), # Phase 100.2
+            "pinned_paths": chat.get("pinned_paths", []),       # MARKER_137.2F2
+            "chat_kind": manager.infer_chat_kind(chat),         # MARKER_137.4L
+            "is_favorite": chat.get("is_favorite", False),      # MARKER_137.3
+            "last_model": last_model,                           # MARKER_152.FIX2: Restore model on chat load
+            "last_model_source": last_model_source,             # MARKER_152.FIX2: Restore provider on chat load
+            "created_at": chat["created_at"],
+            "updated_at": chat["updated_at"],
+            "messages": messages
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[ChatHistory] Error getting chat {chat_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/chats/{chat_id}/messages")
+async def add_message(chat_id: str, message: MessageRequest, request: Request):
+    """
+    Add message to chat.
+
+    Args:
+        chat_id: Chat UUID
+        message: Message to add
+
+    Returns:
+        Success status
+    """
+    try:
+        manager = get_chat_history_manager()
+
+        msg_dict = {
+            "role": message.role,
+            "content": message.content or message.text,
+            "agent": message.agent,
+            "model": message.model,
+            "message_type": message.message_type or "text",
+            "metadata": message.metadata or {}
+        }
+
+        success = manager.add_message(chat_id, msg_dict)
+
+        if not success:
+            raise HTTPException(status_code=404, detail=f"Chat {chat_id} not found")
+
+        return {"success": True, "message": "Message added"}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[ChatHistory] Error adding message to {chat_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/chats/{chat_id}")
+async def delete_chat(chat_id: str, request: Request):
+    """
+    Delete a chat.
+
+    Args:
+        chat_id: Chat UUID
+
+    Returns:
+        Success status
+    """
+    try:
+        manager = get_chat_history_manager()
+        success = manager.delete_chat(chat_id)
+
+        if not success:
+            raise HTTPException(status_code=404, detail=f"Chat {chat_id} not found")
+
+        return {"success": True, "message": f"Chat {chat_id} deleted"}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[ChatHistory] Error deleting chat {chat_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+class RenameRequest(BaseModel):
+    """Request to rename a chat."""
+    display_name: str
+
+
+@router.patch("/chats/{chat_id}")
+async def rename_chat(chat_id: str, data: RenameRequest, request: Request):
+    """
+    Rename a chat (set display_name).
+
+    Phase 74: Allow custom chat names independent of file_name.
+
+    MARKER_EDIT_NAME_API: PATCH /api/chats/{chat_id} endpoint
+    Status: WORKING - Accepts display_name in JSON body, updates ChatHistoryManager
+    Issue: NONE - Backend endpoint is fully functional
+
+    Args:
+        chat_id: Chat UUID
+        data: Request body with display_name
+
+    Returns:
+        Success status with new name
+    """
+    try:
+        if not data.display_name or not data.display_name.strip():
+            raise HTTPException(status_code=400, detail="display_name is required and cannot be empty")
+
+        manager = get_chat_history_manager()
+        success = manager.rename_chat(chat_id, data.display_name.strip())
+
+        if not success:
+            raise HTTPException(status_code=404, detail=f"Chat {chat_id} not found")
+
+        return {
+            "success": True,
+            "chat_id": chat_id,
+            "display_name": data.display_name.strip()
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[ChatHistory] Error renaming chat {chat_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+class PinnedFilesRequest(BaseModel):
+    """Request to update pinned files for a chat."""
+    pinned_file_ids: List[str]
+    pinned_paths: Optional[List[str]] = None
+
+
+class FavoriteRequest(BaseModel):
+    """Request to set favorite status for a chat."""
+    is_favorite: bool
+
+
+class PinHistoryResponse(BaseModel):
+    """Pin timeline event entry for a chat."""
+    event_id: str
+    chat_id: str
+    timestamp: str
+    action: str
+    node_ids: List[str]
+    paths: List[str]
+    message_id: Optional[str] = None
+
+
+class MergeFragmentedChatsRequest(BaseModel):
+    """Request to merge legacy fragmented chats."""
+    dry_run: bool = True
+    max_gap_seconds: int = 90
+
+
+@router.put("/chats/{chat_id}/pinned")
+async def update_pinned_files(chat_id: str, data: PinnedFilesRequest, request: Request):
+    """
+    Update pinned file IDs for a chat.
+
+    Phase 100.2: Persistent pinned files across reload.
+
+    Args:
+        chat_id: Chat UUID
+        data: Request body with pinned_file_ids list
+
+    Returns:
+        Success status with pinned count
+    """
+    try:
+        manager = get_chat_history_manager()
+        success = manager.update_pinned_files(chat_id, data.pinned_file_ids, data.pinned_paths or [])
+
+        if not success:
+            raise HTTPException(status_code=404, detail=f"Chat {chat_id} not found")
+
+        return {
+            "success": True,
+            "chat_id": chat_id,
+            "pinned_count": len(data.pinned_file_ids),
+            "pinned_paths_count": len(data.pinned_paths or []),
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[ChatHistory] Error updating pinned files for {chat_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/chats/{chat_id}/pinned")
+async def get_pinned_files(chat_id: str, request: Request):
+    """
+    Get pinned file IDs for a chat.
+
+    Phase 100.2: Retrieve pinned files on chat load.
+
+    Args:
+        chat_id: Chat UUID
+
+    Returns:
+        List of pinned file node IDs
+    """
+    try:
+        manager = get_chat_history_manager()
+        pinned_ids = manager.get_pinned_files(chat_id)
+        pinned_paths = manager.get_pinned_paths(chat_id)
+
+        return {
+            "chat_id": chat_id,
+            "pinned_file_ids": pinned_ids,
+            "pinned_paths": pinned_paths,
+        }
+
+    except Exception as e:
+        print(f"[ChatHistory] Error getting pinned files for {chat_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/chats/{chat_id}/pins/history", response_model=Dict[str, Any])
+async def get_pin_history(chat_id: str, request: Request, limit: int = 200):
+    """
+    Get pin/unpin timeline for a chat.
+
+    MARKER_CHAT_HUB_3A: Pin history for navigation to former pins/artifacts.
+    """
+    try:
+        manager = get_chat_history_manager()
+        if not manager.get_chat(chat_id):
+            raise HTTPException(status_code=404, detail=f"Chat {chat_id} not found")
+
+        events = manager.get_pin_events(chat_id, limit=limit)
+        normalized_events = []
+        for event in events:
+            normalized_events.append(
+                PinHistoryResponse(
+                    event_id=str(event.get("event_id", "")),
+                    chat_id=str(event.get("chat_id", chat_id)),
+                    timestamp=str(event.get("timestamp", "")),
+                    action=str(event.get("action", "")),
+                    node_ids=list(event.get("node_ids", []) or []),
+                    paths=list(event.get("paths", []) or []),
+                    message_id=event.get("message_id"),
+                )
+            )
+        return {
+            "chat_id": chat_id,
+            "events": normalized_events,
+            "count": len(normalized_events),
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[ChatHistory] Error getting pin history for {chat_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.put("/chats/{chat_id}/favorite")
+async def set_chat_favorite(chat_id: str, data: FavoriteRequest, request: Request):
+    """
+    Set favorite status for a chat.
+
+    MARKER_137.3: Favorites with optional CAM/EnGRAM sync.
+
+    Args:
+        chat_id: Chat UUID
+        data: Request body with is_favorite flag
+
+    Returns:
+        Success status with updated favorite state
+    """
+    try:
+        manager = get_chat_history_manager()
+        success = manager.set_favorite(chat_id, data.is_favorite)
+
+        if not success:
+            raise HTTPException(status_code=404, detail=f"Chat {chat_id} not found")
+
+        # Optional CAM sync with guard: do not fail endpoint if CAM is disabled/unavailable.
+        flask_config = getattr(request.app.state, "flask_config", {}) if request and request.app else {}
+        elisya_enabled = bool(flask_config.get("ELISYA_ENABLED", False))
+        if elisya_enabled:
+            try:
+                from src.orchestration.cam_event_handler import emit_cam_event
+                await emit_cam_event(
+                    "chat_favorited",
+                    {"chat_id": chat_id, "is_favorite": bool(data.is_favorite)},
+                    source="chat_history_routes"
+                )
+            except Exception:
+                # Non-critical: favorite toggle must remain available without CAM.
+                pass
+
+        # MARKER_137.5A: ENGRAM user-preference sync (non-blocking and optional).
+        try:
+            from src.memory.aura_store import get_aura_store
+            aura = get_aura_store()
+            user_id = (
+                request.headers.get("x-user-id")
+                or request.headers.get("x-session-user")
+                or request.headers.get("x-session-id")
+                or "danila"
+            ).strip() or "danila"
+
+            highlights = aura.get_preference(user_id, "project_highlights", "highlights")
+            if not isinstance(highlights, dict):
+                highlights = {}
+
+            favorites = highlights.get("favorite_chats", [])
+            if not isinstance(favorites, list):
+                favorites = []
+
+            if data.is_favorite:
+                if chat_id not in favorites:
+                    favorites.append(chat_id)
+            else:
+                favorites = [cid for cid in favorites if cid != chat_id]
+
+            highlights["favorite_chats"] = favorites[-200:]
+            highlights["favorite_chats_updated_at"] = datetime.now().isoformat()
+            aura.set_preference(
+                user_id,
+                "project_highlights",
+                "highlights",
+                highlights,
+                confidence=0.9 if data.is_favorite else 0.75,
+            )
+        except Exception:
+            # Non-critical: favorite must persist even if ENGRAM layer is unavailable.
+            pass
+
+        return {
+            "success": True,
+            "chat_id": chat_id,
+            "is_favorite": bool(data.is_favorite),
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[ChatHistory] Error setting favorite for {chat_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/chats/maintenance/merge-fragmented")
+async def merge_fragmented_chats(data: MergeFragmentedChatsRequest, request: Request):
+    """
+    Merge legacy fragmented chats created by old split logic.
+
+    MARKER_137.4G:
+    - dry_run=True: return candidate pairs only
+    - dry_run=False: create backup + merge safe pairs
+    """
+    try:
+        manager = get_chat_history_manager()
+        report = manager.merge_fragmented_chats(
+            dry_run=bool(data.dry_run),
+            max_gap_seconds=max(1, int(data.max_gap_seconds)),
+        )
+        return {"success": True, **report}
+    except Exception as e:
+        print(f"[ChatHistory] Error merging fragmented chats: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/chats/file/{file_path:path}")
+async def get_chats_for_file(file_path: str, request: Request):
+    """
+    Get all chats for a specific file.
+
+    Args:
+        file_path: File path (can contain slashes)
+
+    Returns:
+        List of chats for file
+    """
+    try:
+        manager = get_chat_history_manager()
+        chats = manager.get_chats_for_file(file_path)
+
+        chat_responses = [
+            ChatResponse(
+                id=chat["id"],
+                file_path=chat["file_path"],
+                file_name=chat["file_name"],
+                chat_kind=manager.infer_chat_kind(chat),
+                is_favorite=chat.get("is_favorite", False),
+                created_at=chat["created_at"],
+                updated_at=chat["updated_at"],
+                message_count=len(chat.get("messages", []))
+            )
+            for chat in chats
+        ]
+
+        return {"chats": chat_responses}
+
+    except Exception as e:
+        print(f"[ChatHistory] Error getting chats for file {file_path}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============================================================
+# MARKER_136.W3B: Chat-File Links API (Phase 136 Wave 3)
+# ============================================================
+
+@router.get("/files/linked-chats")
+async def get_linked_chats(path: str, request: Request):
+    """
+    Get all chats that are linked to a specific file path.
+    A chat is "linked" if:
+    1. The file is in the chat's pinned_file_ids
+    2. The chat's file_path matches the file
+    3. The file is in the chat's items array
+
+    Args:
+        path: File path to find linked chats for
+
+    Returns:
+        List of linked chats with metadata
+    """
+    try:
+        manager = get_chat_history_manager()
+        all_chats = manager.get_all_chats(limit=500, offset=0)
+
+        linked_chats = []
+        for chat in all_chats:
+            is_linked = False
+
+            # Check 1: File is in pinned_file_ids (by path match - node IDs contain paths)
+            pinned = chat.get("pinned_file_ids", [])
+            if any(path in pin_id for pin_id in pinned):
+                is_linked = True
+
+            # Check 2: Chat's file_path matches
+            if chat.get("file_path") == path:
+                is_linked = True
+
+            # Check 3: File is in items array
+            items = chat.get("items", [])
+            if path in items:
+                is_linked = True
+
+            if is_linked:
+                linked_chats.append({
+                    "id": chat["id"],
+                    "display_name": chat.get("display_name") or chat.get("file_name", "Chat"),
+                    "context_type": chat.get("context_type", "file"),
+                    "chat_kind": manager.infer_chat_kind(chat),
+                    "message_count": len(chat.get("messages", [])),
+                    "last_activity": chat.get("updated_at"),
+                })
+
+        return {
+            "path": path,
+            "chats": linked_chats,
+            "count": len(linked_chats)
+        }
+
+    except Exception as e:
+        print(f"[ChatHistory] Error getting linked chats for {path}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/chats/{chat_id}/link-file")
+async def link_file_to_chat(chat_id: str, request: Request):
+    """
+    Link a file to a chat by adding it to pinned_file_ids.
+
+    Args:
+        chat_id: Chat UUID
+        body: { file_path: string }
+
+    Returns:
+        Success status
+    """
+    try:
+        body = await request.json()
+        file_path = body.get("file_path")
+
+        if not file_path:
+            raise HTTPException(status_code=400, detail="file_path is required")
+
+        manager = get_chat_history_manager()
+        chat = manager.get_chat(chat_id)
+
+        if not chat:
+            raise HTTPException(status_code=404, detail=f"Chat {chat_id} not found")
+
+        # Add file path to pinned_file_ids if not already there
+        pinned = chat.get("pinned_file_ids", [])
+        pinned_paths = chat.get("pinned_paths", [])
+        if file_path not in pinned:
+            pinned.append(file_path)
+        if file_path not in pinned_paths:
+            pinned_paths.append(file_path)
+        manager.update_pinned_files(chat_id, pinned, pinned_paths)
+
+        return {
+            "success": True,
+            "chat_id": chat_id,
+            "file_path": file_path,
+            "pinned_count": len(pinned)
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[ChatHistory] Error linking file to {chat_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/chats/{chat_id}/artifacts", response_model=Dict[str, Any])
+async def get_chat_artifact_links(chat_id: str, request: Request):
+    """
+    Get artifact links attached to a chat.
+
+    MARKER_CHAT_HUB_4A: Unified chat->artifact registry read API.
+    """
+    try:
+        manager = get_chat_history_manager()
+        if not manager.get_chat(chat_id):
+            raise HTTPException(status_code=404, detail=f"Chat {chat_id} not found")
+
+        from src.services.chat_artifact_registry import get_chat_artifact_registry
+
+        registry = get_chat_artifact_registry()
+        links = registry.get_by_chat(chat_id)
+        return {
+            "chat_id": chat_id,
+            "artifacts": links,
+            "count": len(links),
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[ChatHistory] Error loading artifact links for {chat_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/chats/search/{query}")
+async def search_chats(query: str, request: Request, chat_id: Optional[str] = None):
+    """
+    Search messages across chats.
+
+    Args:
+        query: Search query
+        chat_id: Optional - search in specific chat only
+
+    Returns:
+        List of matching messages with context
+    """
+    try:
+        manager = get_chat_history_manager()
+        results = manager.search_messages(query, chat_id)
+
+        # MARKER_137.4D: Aggregate message hits into unique chat cards for sidebar search UX.
+        hit_index: Dict[str, Dict[str, Any]] = {}
+        for item in results:
+            cid = item.get("chat_id")
+            if not cid:
+                continue
+            chat = manager.get_chat(cid)
+            if not chat:
+                continue
+
+            msg = item.get("message", {}) or {}
+            snippet = (
+                msg.get("content")
+                or msg.get("text")
+                or ""
+            )
+
+            if cid not in hit_index:
+                hit_index[cid] = {
+                    "id": cid,
+                    "file_path": chat.get("file_path", ""),
+                    "file_name": chat.get("file_name", ""),
+                    "display_name": chat.get("display_name"),
+                    "context_type": chat.get("context_type", "file"),
+                    "chat_kind": manager.infer_chat_kind(chat),
+                    "is_favorite": chat.get("is_favorite", False),
+                    "created_at": chat.get("created_at", ""),
+                    "updated_at": chat.get("updated_at", ""),
+                    "message_count": len(chat.get("messages", [])),
+                    "match_count": 0,
+                    "match_snippet": snippet[:180],
+                    "rank_score": 0.0,
+                }
+
+            hit_index[cid]["match_count"] += 1
+            hit_index[cid]["rank_score"] = max(
+                float(hit_index[cid].get("rank_score", 0.0)),
+                float(item.get("rank_score", 0.0)),
+            )
+            # Keep the shortest useful snippet as preview
+            if snippet and (
+                not hit_index[cid].get("match_snippet")
+                or len(snippet) < len(hit_index[cid].get("match_snippet", ""))
+            ):
+                hit_index[cid]["match_snippet"] = snippet[:180]
+
+        matched_chats = list(hit_index.values())
+        matched_chats.sort(
+            key=lambda c: (
+                float(c.get("rank_score", 0.0)),
+                int(c.get("match_count", 0)),
+                str(c.get("updated_at", "")),
+            ),
+            reverse=True,
+        )
+
+        return {
+            "query": query,
+            "count": len(results),
+            "results": results,
+            "chats": matched_chats,
+            "chats_count": len(matched_chats),
+        }
+
+    except Exception as e:
+        print(f"[ChatHistory] Error searching for '{query}': {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+class CreateChatRequest(BaseModel):
+    """Request to create a named chat (Phase 74.8)."""
+    display_name: str
+    context_type: str = "group"
+    items: Optional[List[str]] = None
+    topic: Optional[str] = None
+    group_id: Optional[str] = None  # Phase 80.5: Link to GroupChatManager group
+
+
+@router.post("/chats")
+async def create_chat(data: CreateChatRequest, request: Request):
+    """
+    Create a new named chat.
+
+    Phase 74.8: Allow creating chats with custom names (for group chats).
+
+    Args:
+        data: Request body with display_name, context_type, items, topic
+
+    Returns:
+        Created chat info with id
+    """
+    try:
+        if not data.display_name or not data.display_name.strip():
+            raise HTTPException(status_code=400, detail="display_name is required")
+
+        manager = get_chat_history_manager()
+
+        # Create chat with null path but with display_name
+        chat_id = manager.get_or_create_chat(
+            file_path="unknown",
+            context_type=data.context_type,
+            items=data.items,
+            topic=data.topic,
+            display_name=data.display_name.strip()
+        )
+
+        # If chat was reused (no display_name), set it now
+        chat = manager.get_chat(chat_id)
+        if not chat.get("display_name"):
+            manager.rename_chat(chat_id, data.display_name.strip())
+            # Also update context_type if needed
+            if chat.get("context_type") != data.context_type:
+                chat["context_type"] = data.context_type
+                manager._save()
+
+        # Phase 80.5: Store group_id for linking to GroupChatManager
+        if data.group_id:
+            chat["group_id"] = data.group_id
+            manager._save()
+
+        return {
+            "success": True,
+            "chat_id": chat_id,
+            "display_name": data.display_name.strip(),
+            "context_type": data.context_type,
+            "group_id": data.group_id
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[ChatHistory] Error creating chat: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/chats/{chat_id}/export")
+async def export_chat(chat_id: str, request: Request):
+    """
+    Export chat as JSON.
+
+    Args:
+        chat_id: Chat UUID
+
+    Returns:
+        Chat as JSON string
+    """
+    try:
+        manager = get_chat_history_manager()
+        json_str = manager.export_chat(chat_id)
+
+        if not json_str:
+            raise HTTPException(status_code=404, detail=f"Chat {chat_id} not found")
+
+        return {"json": json_str}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[ChatHistory] Error exporting chat {chat_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
