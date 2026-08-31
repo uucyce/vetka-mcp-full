@@ -298,6 +298,14 @@ def get_mcp_server(socketio=None):
         except ImportError as e:
             print(f"[MCP] ARC tools not available: {e}")
 
+        # Voice-to-text tools (Phase 110)
+        try:
+            from .tools.voice_to_text_tool import VoiceToTextTool
+            _mcp_server.register_tool(VoiceToTextTool())
+            print("[MCP] Voice-to-text tool registered: vetka_voice_to_text")
+        except ImportError as e:
+            print(f"[MCP] Voice-to-text tool not available: {e}")
+
         print(f"[MCP] Server initialized with {len(_mcp_server.tools)} tools")
 
     return _mcp_server

@@ -11,7 +11,8 @@ from datetime import datetime
 from typing import Any, Dict, Optional
 from pathlib import Path
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+import os
+PROJECT_ROOT = Path(os.environ.get("VETKA_PROJECT_PATH", "/Users/uucyce/VETKA-FULL/vetka-mcp-full"))
 
 
 class MCPAuditLogger:

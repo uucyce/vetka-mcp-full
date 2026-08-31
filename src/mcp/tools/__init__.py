@@ -50,14 +50,18 @@ Intake Tools:
 - vetka_list_intakes: List processed content
 - vetka_get_intake: Get intake content
 
+Voice Tools (Phase 110):
+- vetka_voice_to_text: Transcribe audio to text using whisper.cpp
+
 @status: active
-@phase: 108.4
-@depends: base_tool, search_tool, tree_tool, branch_tool, list_files_tool, read_file_tool, edit_file_tool, run_tests_tool, git_tool, search_knowledge_tool, camera_tool, workflow_tools, session_tools, marker_tool, arc_gap_tool, artifact_tools
+@phase: 110
+@depends: base_tool, search_tool, tree_tool, branch_tool, list_files_tool, read_file_tool, edit_file_tool, run_tests_tool, git_tool, search_knowledge_tool, camera_tool, workflow_tools, session_tools, marker_tool, arc_gap_tool, artifact_tools, voice_to_text_tool
 @used_by: src/mcp/vetka_mcp_bridge.py, src/mcp/mcp_server.py
 
 FIX_98.5: Added marker_tool for @status/@phase marker management.
 FIX_99.3: Added arc_gap_tool for ARC-based conceptual gap detection.
 MARKER_108_4_ARTIFACT_TOOLS: Added artifact_tools for Dev/QA approval workflow.
+MARKER_110_VOICE_TO_TEXT: Added voice_to_text_tool for speech recognition.
 """
 
 from .base_tool import BaseMCPTool
@@ -127,6 +131,13 @@ from .context_dag_tool import (
     ContextDAGTool,
     register_context_dag_tool,
 )
+# MARKER_110_VOICE_TO_TEXT: Voice-to-text tool for speech recognition
+from .voice_to_text_tool import (
+    VoiceToTextTool,
+    get_voice_to_text_tool,
+    vetka_voice_to_text,
+    register_voice_to_text_tool,
+)
 
 __all__ = [
     'BaseMCPTool',
@@ -183,4 +194,9 @@ __all__ = [
     # Context DAG Tool (MARKER_109_3_CONTEXT_DAG)
     'ContextDAGTool',
     'register_context_dag_tool',
+    # Voice-to-Text Tool (MARKER_110_VOICE_TO_TEXT)
+    'VoiceToTextTool',
+    'get_voice_to_text_tool',
+    'vetka_voice_to_text',
+    'register_voice_to_text_tool',
 ]

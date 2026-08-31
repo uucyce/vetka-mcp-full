@@ -2091,6 +2091,21 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
             except Exception as e:
                 return [TextContent(type="text", text=f"❌ Error listing artifacts: {e}")]
 
+        elif name == "vetka_voice_to_text":  # MARKER_110_VOICE_TO_TEXT
+            # Transcribe audio to text using whisper.cpp (Phase 110)
+            try:
+                from src.mcp.tools.voice_to_text_tool import VoiceToTextTool
+                result = VoiceToTextTool().safe_execute(arguments)
+                duration_ms = (time.time() - start_time) * 1000
+                await log_mcp_response(name, result, request_id, duration_ms)
+                if result.get("success"):
+                    text = result["result"].get("text", "")
+                    return [TextContent(type="text", text=text if text else "[No speech detected]")]
+                else:
+                    return [TextContent(type="text", text=f"❌ Voice-to-text error: {result.get('error', 'unknown')}")]
+            except Exception as e:
+                return [TextContent(type="text", text=f"❌ Voice-to-text error: {e}")]
+
         else:
             return [TextContent(
                 type="text",

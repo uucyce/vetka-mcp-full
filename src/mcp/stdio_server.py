@@ -57,8 +57,15 @@ class StdioMCPServer:
             from src.mcp.tools import (
                 SearchTool, GetTreeTool, GetNodeTool, CreateBranchTool,
                 ListFilesTool, ReadFileTool, EditFileTool,
-                RunTestsTool, GitStatusTool, GitCommitTool, SearchKnowledgeTool
+                RunTestsTool, GitStatusTool, GitCommitTool, SearchKnowledgeTool,
+                ExecuteWorkflowTool, WorkflowStatusTool,
+                SessionInitTool, SessionStatusTool,
+                PinnedFilesTool, MarkerTool, MarkerVerifyTool,
+                ARCGapTool, ARCConceptsTool,
+                EditArtifactTool, ApproveArtifactTool, RejectArtifactTool, ListArtifactsTool,
+                ViewportDetailTool, ContextDAGTool
             )
+            from src.mcp.tools.camera_tool import CameraControlTool
 
             # Read-only tools
             self.tools['vetka_search'] = SearchTool()
@@ -68,6 +75,7 @@ class StdioMCPServer:
             self.tools['vetka_list_files'] = ListFilesTool()
             self.tools['vetka_read_file'] = ReadFileTool()
             self.tools['vetka_git_status'] = GitStatusTool()
+            self.tools['vetka_camera_focus'] = CameraControlTool()
 
             # Write tools (dry_run default)
             self.tools['vetka_create_branch'] = CreateBranchTool()
@@ -75,16 +83,176 @@ class StdioMCPServer:
             self.tools['vetka_git_commit'] = GitCommitTool()
             self.tools['vetka_run_tests'] = RunTestsTool()
 
-            log(f"Registered tools: {list(self.tools.keys())}")
+            log(f"Registered core tools: {list(self.tools.keys())}")
+
+            # Workflow tools (Phase 55.1)
+            self.tools['vetka_execute_workflow'] = ExecuteWorkflowTool()
+            self.tools['vetka_workflow_status'] = WorkflowStatusTool()
+            log("Workflow tools registered: vetka_execute_workflow, vetka_workflow_status")
+
+            # Session tools (Phase 55.1)
+            self.tools['vetka_session_init'] = SessionInitTool()
+            self.tools['vetka_session_status'] = SessionStatusTool()
+            log("Session tools registered: vetka_session_init, vetka_session_status")
+
+            # Pinned files context tool (Phase 109.2)
+            self.tools['vetka_get_pinned_files'] = PinnedFilesTool()
+            log("Pinned files tool registered: vetka_get_pinned_files")
+
+            # Marker tools (FIX_98.5)
+            self.tools['vetka_marker'] = MarkerTool()
+            self.tools['vetka_marker_verify'] = MarkerVerifyTool()
+            log("Marker tools registered: vetka_marker, vetka_marker_verify")
 
             # ARC Gap tools (Phase 99.3)
+            self.tools['vetka_arc_gap'] = ARCGapTool()
+            self.tools['vetka_arc_concepts'] = ARCConceptsTool()
+            log("ARC tools registered: vetka_arc_gap, vetka_arc_concepts")
+
+            # Artifact tools (Phase 108.4)
+            self.tools['vetka_edit_artifact'] = EditArtifactTool()
+            self.tools['vetka_approve_artifact'] = ApproveArtifactTool()
+            self.tools['vetka_reject_artifact'] = RejectArtifactTool()
+            self.tools['vetka_list_artifacts'] = ListArtifactsTool()
+            log("Artifact tools registered: vetka_edit_artifact, vetka_approve_artifact, vetka_reject_artifact, vetka_list_artifacts")
+
+            # Viewport tool (Phase 109.2)
+            self.tools['vetka_get_viewport_detail'] = ViewportDetailTool()
+            log("Viewport tool registered: vetka_get_viewport_detail")
+
+            # Context DAG tool (Phase 109.3)
+            self.tools['vetka_get_context_dag'] = ContextDAGTool()
+            log("Context DAG tool registered: vetka_get_context_dag")
+
+            # Task Board tools
             try:
-                from src.mcp.tools.arc_gap_tool import ARCGapTool, ARCConceptsTool
-                self.tools['vetka_arc_gap'] = ARCGapTool()
-                self.tools['vetka_arc_concepts'] = ARCConceptsTool()
-                log("ARC tools registered: vetka_arc_gap, vetka_arc_concepts")
+                from src.mcp.tools.task_board_tools import handle_task_board
+                class TaskBoardWrapper:
+                    def __init__(self, func):
+                        self._func = func
+                    
+                    def to_openai_schema(self):
+                        return {
+                            "type": "function",
+                            "function": {
+                                "name": "vetka_task_board",
+                                "description": "VETKA Task Board CRUD operations",
+                                "parameters": {
+                                    "type": "object",
+                                    "properties": {
+                                        "action": {"type": "string", "description": "Action: list, get, claim, complete, create, update, delete, merge_request, notifications, ack_notifications"},
+                                        "task_id": {"type": "string", "description": "Task ID"},
+                                        "role": {"type": "string", "description": "Filter by role"},
+                                        "filter_status": {"type": "string", "description": "Filter by status"}
+                                    },
+                                    "required": ["action"]
+                                }
+                            }
+                        }
+                    
+                    def safe_execute(self, arguments):
+                        return self._func(arguments)
+                
+                self.tools['vetka_task_board'] = TaskBoardWrapper(handle_task_board)
+                log("Task board tool registered: vetka_task_board")
+
+                # Task dispatch and import (Phase 99.5)
+                try:
+                    from src.mcp.tools.task_board_tools import handle_task_dispatch, handle_task_import
+
+                    class TaskDispatchWrapper:
+                        def __init__(self, func):
+                            self._func = func
+                        
+                        def to_openai_schema(self):
+                            return {
+                                "type": "function",
+                                "function": {
+                                    "name": "vetka_task_dispatch",
+                                    "description": "Dispatch tasks to pipeline",
+                                    "parameters": {
+                                        "type": "object",
+                                        "properties": {
+                                            "task_id": {"type": "string", "description": "Task ID to dispatch"},
+                                            "chat_id": {"type": "string", "description": "Chat ID for progress streaming"}
+                                        }
+                                    }
+                                }
+                            }
+                        
+                        def safe_execute(self, arguments):
+                            import asyncio
+                            return asyncio.run(self._func(arguments))
+
+                    class TaskImportWrapper:
+                        def __init__(self, func):
+                            self._func = func
+                        
+                        def to_openai_schema(self):
+                            return {
+                                "type": "function",
+                                "function": {
+                                    "name": "vetka_task_import",
+                                    "description": "Import tasks from todo file",
+                                    "parameters": {
+                                        "type": "object",
+                                        "properties": {
+                                            "file_path": {"type": "string", "description": "Path to todo file"},
+                                            "source_tag": {"type": "string", "description": "Source tag"}
+                                        },
+                                        "required": ["file_path"]
+                                    }
+                                }
+                            }
+                        
+                        def safe_execute(self, arguments):
+                            return self._func(arguments)
+
+                    self.tools['vetka_task_dispatch'] = TaskDispatchWrapper(handle_task_dispatch)
+                    self.tools['vetka_task_import'] = TaskImportWrapper(handle_task_import)
+                    log("Task dispatch/import tools registered: vetka_task_dispatch, vetka_task_import")
+                except ImportError as e:
+                    log(f"Task dispatch/import not available: {e}")
             except ImportError as e:
-                log(f"ARC tools not available: {e}")
+                log(f"Task board tools not available: {e}")
+
+            # Memory tools (if available)
+            try:
+                from src.mcp.tools.memory_tools import MemoryGetTool, MemoryStoreTool, MemorySearchTool
+                self.tools['vetka_memory_get'] = MemoryGetTool()
+                self.tools['vetka_memory_store'] = MemoryStoreTool()
+                self.tools['vetka_memory_search'] = MemorySearchTool()
+                log("Memory tools registered: vetka_memory_get, vetka_memory_store, vetka_memory_search")
+            except ImportError as e:
+                log(f"Memory tools not available: {e}")
+
+            # Intake tools (URL processing)
+            try:
+                from src.intake.tools import IntakeURLTool, ListIntakesTool, GetIntakeTool
+                self.tools['vetka_intake_url'] = IntakeURLTool()
+                self.tools['vetka_list_intakes'] = ListIntakesTool()
+                self.tools['vetka_get_intake'] = GetIntakeTool()
+                log("Intake tools registered: vetka_intake_url, vetka_list_intakes, vetka_get_intake")
+            except ImportError as e:
+                log(f"Intake tools not available: {e}")
+
+            # Web search tool
+            try:
+                from src.mcp.tools.web_search_tool import WebSearchTool
+                self.tools['vetka_web_search'] = WebSearchTool()
+                log("Web search tool registered: vetka_web_search")
+            except ImportError as e:
+                log(f"Web search tool not available: {e}")
+
+            # Voice-to-text tool (Phase 110)
+            try:
+                from src.mcp.tools.voice_to_text_tool import VoiceToTextTool
+                self.tools['vetka_voice_to_text'] = VoiceToTextTool()
+                log("Voice-to-text tool registered: vetka_voice_to_text")
+            except ImportError as e:
+                log(f"Voice-to-text tool not available: {e}")
+
+            log(f"Total tools registered: {len(self.tools)}")
 
         except ImportError as e:
             log(f"Warning: Could not import tools: {e}")

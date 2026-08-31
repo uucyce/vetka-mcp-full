@@ -23,11 +23,12 @@ Integration:
 from typing import Dict, Any, List, Optional
 import uuid
 import asyncio
+import os
 from pathlib import Path
 
 from .base_tool import BaseMCPTool
 
-PROJECT_ROOT = Path("/Users/danilagulin/Documents/VETKA_Project/vetka_live_03")
+PROJECT_ROOT = Path(os.environ.get("VETKA_PROJECT_PATH", "/Users/uucyce/VETKA-FULL/vetka-mcp-full"))
 
 
 class ExecuteWorkflowTool(BaseMCPTool):

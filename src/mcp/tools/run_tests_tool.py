@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any, Dict
 from .base_tool import BaseMCPTool
 
-PROJECT_ROOT = Path("/Users/danilagulin/Documents/VETKA_Project/vetka_live_03")
+PROJECT_ROOT = Path(os.environ.get("VETKA_PROJECT_PATH", "/Users/uucyce/VETKA-FULL/vetka-mcp-full"))
 
 
 class RunTestsTool(BaseMCPTool):
