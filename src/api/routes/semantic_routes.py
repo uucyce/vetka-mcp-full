@@ -363,11 +363,12 @@ async def weaviate_search(req: WeaviateSearchRequest, request: Request):
 
             if health_resp.status_code == 200:
                 # Build GraphQL query for hybrid search
+                escaped_query = query.replace('"', '\\"')
                 graphql_query = {
                     "query": f'''{{
                         Get {{
                             VetkaLeaf(
-                                hybrid: {{query: "{query.replace('"', '\\"')}", alpha: 0.7}}
+                                hybrid: {{query: "{escaped_query}", alpha: 0.7}}
                                 limit: {limit}
                             ) {{
                                 file_path

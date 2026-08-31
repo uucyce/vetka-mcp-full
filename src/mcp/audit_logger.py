@@ -11,7 +11,7 @@ from datetime import datetime
 from typing import Any, Dict, Optional
 from pathlib import Path
 
-PROJECT_ROOT = Path("/Users/danilagulin/Documents/VETKA_Project/vetka_live_03")
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 
 
 class MCPAuditLogger:
