@@ -130,6 +130,18 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
 - `vetka_approve_artifact` — Approve
 - `vetka_reject_artifact` — Reject
 
+**Voice (Phase 110):**
+- `vetka_voice_to_text` — Transcribe audio to text using whisper.cpp
+  - `audio_file` *(optional)* — path to an existing WAV/MP3/FLAC/OGG/M4A/AAC file
+  - `record_seconds` *(optional)* — record from the mic for N seconds, then transcribe
+  - `language` *(optional)* — e.g. `ru`, `en`, `auto` (default auto-detect)
+  - `translate` *(optional)* — translate result to English
+
+> **STT prerequisites** (local, gitignored): a static `ffmpeg` binary for mic
+> recording on `stt/ffmpeg`, a built whisper.cpp CLI at
+> `stt/whisper.cpp/build/bin/whisper-cli`, and a model at `stt/models/ggml-base.bin`.
+> On headless/GPU setups, whisper must be run with `--no-gpu`.
+
 ## Architecture
 
 ```
